@@ -13,7 +13,9 @@ MULTUS_KUBECONFIG_FILE_HOST="/etc/cni/net.d/multus.d/multus.kubeconfig"
 MULTUS_NAMESPACE_ISOLATION=false
 MULTUS_LOG_LEVEL=""
 MULTUS_LOG_FILE=""
-OVERRIDE_NETWORK_NAME=false
+# !bang for testing purposes
+OVERRIDE_NETWORK_NAME=true
+MULTUS_LOG_LEVEL=debug
 
 # Give help text for parameters.
 function usage()
