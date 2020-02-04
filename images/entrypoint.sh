@@ -325,6 +325,7 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
           $LOG_FILE_STRING
           $ADDITIONAL_BIN_DIR_STRING
           "kubeconfig": "$MULTUS_KUBECONFIG_FILE_HOST",
+          "readinessindicatorfile": "$(echo $MASTER_PLUGIN_LOCATION|sed -e 's|/host||')",
           "delegates": [
             $MASTER_PLUGIN_JSON
           ]
@@ -363,8 +364,22 @@ if [ "$MULTUS_CLEANUP_CONFIG_ON_EXIT" == true ]; then
   while true; do
     # Check and see if the original master plugin configuration exists...
     if [ ! -f "$MASTER_PLUGIN_LOCATION" ]; then
-      log "Master plugin @ $MASTER_PLUGIN_LOCATION has been deleted. Performing cleanup..."
-      cleanup
+      log "Master plugin @ $MASTER_PLUGIN_LOCATION has been deleted. Allowing 45 seconds for its restoration..."
+      sleep 10
+      for i in {1..35}
+      do
+        if [ -f "$MASTER_PLUGIN_LOCATION" ]; then
+          log "Master plugin @ $MASTER_PLUGIN_LOCATION was restored. Regenerating given configuration."
+          break
+        fi
+        sleep 1
+      done
+  
+      if [ ! -f "$MASTER_PLUGIN_LOCATION" ]; then
+        log "Master plugin @ $MASTER_PLUGIN_LOCATION has not been restored, beginning regeneration."
+        cleanup
+      fi
+
       generateMultusConf
       log "Continuing watch loop after configuration regeneration..."
     fi
