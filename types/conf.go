@@ -17,7 +17,6 @@ package types
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 
 	"github.com/containernetworking/cni/libcni"
@@ -98,8 +97,7 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 
 	if net != nil {
 		if net.Name != "" {
-			// Overwrite CNI config name with net-attach-def name
-			delegateConf.Name = fmt.Sprintf("%s/%s", net.Namespace, net.Name)
+			delegateConf.Name = net.Name
 		}
 		if net.InterfaceRequest != "" {
 			delegateConf.IfnameRequest = net.InterfaceRequest
