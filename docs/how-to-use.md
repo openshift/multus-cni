@@ -627,3 +627,11 @@ Sometimes, you may wish to not have the entrypoint copy the binary file onto the
 If you wish to have auto configuration use the `readinessindicatorfile` in the configuration, you can use the `--readiness-indicator-file` to express which file should be used as the readiness indicator.
 
     --readiness-indicator-file=/path/to/file
+
+If you wish to disable Multus reading annotation in order to attach additional networks, you can do so with:
+
+    --disable-annotation-read=true
+
+If you wish to append a CNI plugin to the delegtes when the Multus configuration is laid down on disk, add JSON using the `--delegates-append` flag as so:
+
+    --delegates-append='{"type": "foo", "param": "bar"}'

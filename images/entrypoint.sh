@@ -29,6 +29,8 @@ RESTART_CRIO=false
 CRIO_RESTARTED_ONCE=false
 RENAME_SOURCE_CONFIG_FILE=false
 SKIP_BINARY_COPY=false
+DISABLE_ANNOTATION_READ=false
+DELEGATES_APPEND=""
 
 # Give help text for parameters.
 function usage()
@@ -143,6 +145,12 @@ while [ "$1" != "" ]; do
             ;;
         --readiness-indicator-file)
             MULTUS_READINESS_INDICATOR_FILE=$VALUE
+            ;;
+        --disable-annotation-read)
+            DISABLE_ANNOTATION_READ=$VALUE
+            ;;
+        --delegates-append)
+            DELEGATES_APPEND=$VALUE
             ;;
         *)
             warn "unknown parameter \"$PARAM\""
@@ -310,6 +318,15 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
         ADDITIONAL_BIN_DIR_STRING="\"binDir\": \"$ADDITIONAL_BIN_DIR\","
       fi
 
+      DISABLE_ANNOTATION_READ_STRING=""
+      if [ $DISABLE_ANNOTATION_READ ]; then
+        DISABLE_ANNOTATION_READ_STRING="\"disableAnnotationRead\": \"$DISABLE_ANNOTATION_READ\","
+      fi
+      
+      DELEGATES_APPEND_STRING=""
+      if [ ! -z "${DELEGATES_APPEND// }" ]; then
+        DELEGATES_APPEND_STRING=",$DELEGATES_APPEND"
+      fi
 
       READINESS_INDICATOR_FILE_STRING=""
       if [ ! -z "${MULTUS_READINESS_INDICATOR_FILE// }" ]; then
@@ -360,7 +377,7 @@ EOF
           $READINESS_INDICATOR_FILE_STRING
           "kubeconfig": "$MULTUS_KUBECONFIG_FILE_HOST",
           "delegates": [
-            $MASTER_PLUGIN_JSON
+            $MASTER_PLUGIN_JSON$DELEGATES_APPEND_STRING
           ]
         }
 EOF

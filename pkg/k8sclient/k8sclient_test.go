@@ -55,6 +55,7 @@ var _ = Describe("k8sclient operations", func() {
 	var tmpDir string
 	var err error
 	var genericConf string
+	var parsedconf *types.NetConf
 
 	BeforeEach(func() {
 		tmpDir, err = ioutil.TempDir("", "multus_tmp")
@@ -69,6 +70,9 @@ var _ = Describe("k8sclient operations", func() {
 			}],
 			"kubeconfig":"/etc/kubernetes/node-kubeconfig.yaml"
 		}`
+
+		parsedconf, err = types.LoadNetConf([]byte(genericConf))
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
@@ -113,7 +117,7 @@ var _ = Describe("k8sclient operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
 		Expect(err).NotTo(HaveOccurred())
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -150,7 +154,7 @@ var _ = Describe("k8sclient operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
 		Expect(err).NotTo(HaveOccurred())
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -201,7 +205,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -230,7 +234,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(len(networks)).To(Equal(0))
 		Expect(err).To(MatchError("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: invalid character 'a' looking for beginning of value"))
 	})
@@ -277,7 +281,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -323,7 +327,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -352,7 +356,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -389,7 +393,7 @@ var _ = Describe("k8sclient operations", func() {
 		k8sArgs, err := GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 		netConf, err := types.LoadNetConf([]byte(genericConf))
 		netConf.ConfDir = tmpDir
@@ -889,7 +893,7 @@ users:
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 
 		netConf, err := types.LoadNetConf([]byte(conf))
@@ -938,7 +942,7 @@ users:
 		Expect(err).NotTo(HaveOccurred())
 
 		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
-		networks, err := GetPodNetwork(pod)
+		networks, err := GetPodNetwork(pod, parsedconf)
 		Expect(err).NotTo(HaveOccurred())
 
 		netConf, err := types.LoadNetConf([]byte(conf))
@@ -946,6 +950,72 @@ users:
 		_, err = GetNetworkDelegates(clientInfo, pod, networks, netConf, nil)
 
 		Expect(err).NotTo(HaveOccurred())
+
+	})
+
+	It("does not read annotations when configured as such.", func() {
+		fakePod := testutils.NewFakePod("testpod", "net1,net2", "")
+		net1 := `{
+	"name": "net1",
+	"type": "mynet",
+	"cniVersion": "0.2.0"
+}`
+		net2 := `{
+	"name": "net2",
+	"type": "mynet2",
+	"cniVersion": "0.2.0"
+}`
+		net3 := `{
+	"name": "net3",
+	"type": "mynet3",
+	"cniVersion": "0.2.0"
+}`
+
+		args := &skel.CmdArgs{
+			Args: fmt.Sprintf("K8S_POD_NAME=%s;K8S_POD_NAMESPACE=%s", fakePod.ObjectMeta.Name, fakePod.ObjectMeta.Namespace),
+		}
+
+		clientInfo := NewFakeClientInfo()
+		_, err := clientInfo.AddPod(fakePod)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = clientInfo.AddNetAttachDef(testutils.NewFakeNetAttachDef(fakePod.ObjectMeta.Namespace, "net1", net1))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = clientInfo.AddNetAttachDef(testutils.NewFakeNetAttachDef(fakePod.ObjectMeta.Namespace, "net2", net2))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = clientInfo.AddNetAttachDef(testutils.NewFakeNetAttachDef(fakePod.ObjectMeta.Namespace, "net3", net3))
+		Expect(err).NotTo(HaveOccurred())
+
+		k8sArgs, err := GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+		pod, err := clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
+		Expect(err).NotTo(HaveOccurred())
+
+		rawconf := `{
+			"name":"node-cni-network",
+			"type":"multus",
+			"delegates": [{
+			"name": "weave1",
+				"cniVersion": "0.2.0",
+				"type": "weave-net"
+			}],
+			"disableAnnotationRead": true,
+			"kubeconfig":"/etc/kubernetes/node-kubeconfig.yaml"
+		}`
+
+		theconf, err := types.LoadNetConf([]byte(rawconf))
+
+		networks, err := GetPodNetwork(pod, theconf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(networks).To(BeNil())
+
+		netstatus := []nettypes.NetworkStatus{}
+		err = SetNetworkStatus(clientInfo, k8sArgs, netstatus, theconf)
+
+		pod, err = clientInfo.GetPod(string(k8sArgs.K8S_POD_NAMESPACE), string(k8sArgs.K8S_POD_NAME))
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(pod.Annotations["k8s.v1.cni.cncf.io/multus-annotation-disabled"]).To(Equal("true"))
 
 	})
 
@@ -1039,7 +1109,7 @@ users:
 				testutils.NewFakeNetAttachDefAnnotation(fakePod.ObjectMeta.Namespace, "net3", net3))
 			Expect(err).NotTo(HaveOccurred())
 
-			networks, err := GetPodNetwork(fakePod)
+			networks, err := GetPodNetwork(fakePod, parsedconf)
 			Expect(err).NotTo(HaveOccurred())
 
 			netConf, err := types.LoadNetConf([]byte(genericConf))
@@ -1070,17 +1140,17 @@ users:
 
 			// invalid case 1 - can't have more than 2 items separated by "/"
 			pod.Annotations[networkAttachmentAnnot] = "root@someIP/root@someOtherIP/root@thirdIP"
-			_, err = GetPodNetwork(pod)
+			_, err = GetPodNetwork(pod, parsedconf)
 			Expect(err).To(HaveOccurred())
 
 			// invalid case 2 - can't have more than 2 items separated by "@"
 			pod.Annotations[networkAttachmentAnnot] = "root@someIP/root@someOtherIP@garbagevalue"
-			_, err = GetPodNetwork(pod)
+			_, err = GetPodNetwork(pod, parsedconf)
 			Expect(err).To(HaveOccurred())
 
 			// invalid case 3 - not matching comma-delimited format
 			pod.Annotations[networkAttachmentAnnot] = "root@someIP/root@someOtherIP"
-			_, err = GetPodNetwork(pod)
+			_, err = GetPodNetwork(pod, parsedconf)
 			Expect(err).To(HaveOccurred())
 		})
 	})

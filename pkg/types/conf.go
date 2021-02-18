@@ -336,6 +336,10 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 		netconf.NonIsolatedNamespaces = nonisolated
 	}
 
+	if netconf.DisableAnnotationRead != true {
+		netconf.DisableAnnotationRead = false
+	}
+
 	// get RawDelegates and put delegates field
 	if netconf.ClusterNetwork == "" {
 		// for Delegates

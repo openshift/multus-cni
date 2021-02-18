@@ -51,6 +51,9 @@ type NetConf struct {
 	RawNonIsolatedNamespaces string   `json:"globalNamespaces"`
 	NonIsolatedNamespaces    []string `json:"-"`
 
+	// Option to disable reading annotation
+	DisableAnnotationRead bool `json:"disableAnnotationRead"`
+
 	// Option to set system namespaces (to avoid to add defaultNetworks)
 	SystemNamespaces []string `json:"systemNamespaces"`
 	// Option to set the namespace that multus-cni uses (clusterNetwork/defaultNetworks)
