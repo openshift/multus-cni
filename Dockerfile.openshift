@@ -5,7 +5,7 @@ WORKDIR /usr/src/multus-cni
 ENV CGO_ENABLED=1
 ENV GO111MODULE=off
 ENV VERSION=rhel8 COMMIT=unset
-RUN ./build && \
+RUN ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin
 WORKDIR /
 
@@ -14,13 +14,14 @@ ADD . /usr/src/multus-cni
 WORKDIR /usr/src/multus-cni
 ENV CGO_ENABLED=1
 ENV GO111MODULE=off
-RUN ./build && \
+RUN ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin
 
 WORKDIR /usr/src/multus-cni
 ENV GO111MODULE=off
-RUN ./build && \
-       cd /usr/src/multus-cni/bin
+RUN ./hack/build-go.sh && \
+       cd /usr/src/multus-cni/bin 
+RUN ls -lathr /usr/src/multus-cni/bin/multus
 WORKDIR /
 
 FROM registry.svc.ci.openshift.org/ocp/4.6:base
