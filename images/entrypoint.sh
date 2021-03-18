@@ -3,6 +3,13 @@
 # Always exit on errors.
 set -e
 
+# Trap sigterm
+function exitonsigterm() {
+  echo "Trapped sigterm, exiting."
+  exit 0
+}
+trap exitonsigterm SIGTERM
+
 # Set our known directories.
 CNI_CONF_DIR="/host/etc/cni/net.d"
 CNI_BIN_DIR="/host/opt/cni/bin"
@@ -12,6 +19,8 @@ MULTUS_AUTOCONF_DIR="/host/etc/cni/net.d"
 MULTUS_BIN_FILE="/usr/src/multus-cni/bin/multus"
 MULTUS_KUBECONFIG_FILE_HOST="/etc/cni/net.d/multus.d/multus.kubeconfig"
 MULTUS_NAMESPACE_ISOLATION=false
+MULTUS_GLOBAL_NAMESPACES=""
+MULTUS_LOG_TO_STDERR=true
 MULTUS_LOG_LEVEL=""
 MULTUS_LOG_FILE=""
 MULTUS_READINESS_INDICATOR_FILE=""
@@ -42,7 +51,9 @@ function usage()
     echo -e "\t--skip-multus-binary-copy=$SKIP_BINARY_COPY"
     echo -e "\t--multus-kubeconfig-file-host=$MULTUS_KUBECONFIG_FILE_HOST"
     echo -e "\t--namespace-isolation=$MULTUS_NAMESPACE_ISOLATION"
+    echo -e "\t--global-namespaces=$MULTUS_GLOBAL_NAMESPACES (used only with --namespace-isolation=true)"
     echo -e "\t--multus-autoconfig-dir=$MULTUS_AUTOCONF_DIR (used only with --multus-conf-file=auto)"
+    echo -e "\t--multus-log-to-stderr=$MULTUS_LOG_TO_STDERR (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--multus-log-level=$MULTUS_LOG_LEVEL (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--multus-log-file=$MULTUS_LOG_FILE (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--override-network-name=false (used only with --multus-conf-file=auto)"
@@ -67,6 +78,10 @@ function warn()
 {
     log "WARN: {$1}"
 }
+
+if ! type python3 &> /dev/null; then
+	alias python=python3
+fi
 
 # Parse parameters given as arguments to this script.
 while [ "$1" != "" ]; do
@@ -97,6 +112,12 @@ while [ "$1" != "" ]; do
             ;;
         --namespace-isolation)
             MULTUS_NAMESPACE_ISOLATION=$VALUE
+            ;;
+        --global-namespaces)
+            MULTUS_GLOBAL_NAMESPACES=$VALUE
+            ;;
+        --multus-log-to-stderr)
+            MULTUS_LOG_TO_STDERR=$VALUE
             ;;
         --multus-log-level)
             MULTUS_LOG_LEVEL=$VALUE
@@ -255,6 +276,17 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
         ISOLATION_STRING="\"namespaceIsolation\": true,"
       fi
 
+      GLOBAL_NAMESPACES_STRING=""
+      if [ ! -z "${MULTUS_GLOBAL_NAMESPACES// }" ]; then
+        GLOBAL_NAMESPACES_STRING="\"globalNamespaces\": \"$MULTUS_GLOBAL_NAMESPACES\","
+      fi
+
+      LOG_TO_STDERR_STRING=""
+      if [ "$MULTUS_LOG_TO_STDERR" == false ]; then
+        LOG_TO_STDERR_STRING="\"logToStderr\": false,"
+      fi
+
+
       LOG_LEVEL_STRING=""
       if [ ! -z "${MULTUS_LOG_LEVEL// }" ]; then
         case "$MULTUS_LOG_LEVEL" in
@@ -297,10 +329,31 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
 
       if [ "$OVERRIDE_NETWORK_NAME" == "true" ]; then
         MASTER_PLUGIN_NET_NAME="$(cat $MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN | \
-            python -c 'import json,sys;print json.load(sys.stdin)["name"]')"
+            python -c 'import json,sys;print(json.load(sys.stdin)["name"])')"
       else
         MASTER_PLUGIN_NET_NAME="multus-cni-network"
       fi
+
+      capabilities_python_filter_tmpfile=$(mktemp)
+      cat << EOF > $capabilities_python_filter_tmpfile
+import json,sys
+conf = json.load(sys.stdin)
+capabilities = {}
+if 'plugins' in conf:
+    for capa in [p['capabilities'] for p in conf['plugins'] if 'capabilities' in p]:
+        capabilities.update({capability:enabled for (capability,enabled) in capa.items() if enabled})
+elif 'capabilities' in conf:
+    capabilities.update({capability:enabled for (capability,enabled) in conf['capabilities'] if enabled})
+if len(capabilities) > 0:
+    print("""\"capabilities\": """ + json.dumps(capabilities) + ",")
+else:
+    print("")
+EOF
+
+      NESTED_CAPABILITIES_STRING="$(cat $MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN | \
+            python $capabilities_python_filter_tmpfile)"
+      rm $capabilities_python_filter_tmpfile
+      log "Nested capabilities string: $NESTED_CAPABILITIES_STRING" 
 
       MASTER_PLUGIN_LOCATION=$MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN
       MASTER_PLUGIN_JSON="$(cat $MASTER_PLUGIN_LOCATION)"
@@ -311,6 +364,8 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
           "name": "$MASTER_PLUGIN_NET_NAME",
           "type": "multus",
           $ISOLATION_STRING
+          $GLOBAL_NAMESPACES_STRING
+          $LOG_TO_STDERR_STRING
           $LOG_LEVEL_STRING
           $LOG_FILE_STRING
           $ADDITIONAL_BIN_DIR_STRING
@@ -374,5 +429,9 @@ if [ "$MULTUS_CLEANUP_CONFIG_ON_EXIT" == true ]; then
   done
 else
   log "Entering sleep (success)..."
-  sleep infinity
+  if tty -s; then
+	  read
+  else
+	  sleep infinity
+  fi
 fi
