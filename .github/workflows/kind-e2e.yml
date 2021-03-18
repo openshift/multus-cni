@@ -1,7 +1,9 @@
 name: e2e-kind
 on: [push, pull_request]
 jobs:
-  e2e-kind:
+
+  build:
+    name: Build and test
     runs-on: ubuntu-latest
     if: >
       (( github.event.pull_request.head.repo.owner.login != github.event.pull_request.base.repo.owner.login ) &&
@@ -14,7 +16,7 @@ jobs:
         run: docker run -d --restart=always -p "5000:5000" --name "kind-registry" registry:2
   
       - name: Build latest-amd64
-        run: docker build -t localhost:5000/multus:e2e -f deployments/Dockerfile .
+        run: docker build -t localhost:5000/multus:e2e .
  
       - name: Push to local registry
         run: docker push localhost:5000/multus:e2e
