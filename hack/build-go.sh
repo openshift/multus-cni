@@ -19,17 +19,17 @@ if [ -z "$VERSION" ]; then
 	fi
 	set -e
 fi
-DATE=$(date --iso-8601=seconds)
+DATE=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" --iso-8601=seconds)
 COMMIT=${COMMIT:-$(git rev-parse --verify HEAD)}
 LDFLAGS="-X main.version=${VERSION:-master} -X main.commit=${COMMIT} -X main.date=${DATE}"
-export CGO_ENABLED=1
+export CGO_ENABLED=0
 
 # this if... will be removed when gomodules goes default
 if [ "$GO111MODULE" == "off" ]; then
 	echo "Building plugin without go module"
 	echo "Warning: this will be deprecated in near future so please use go modules!"
 
-	ORG_PATH="gopkg.in/intel"
+	ORG_PATH="gopkg.in/k8snetworkplumbingwg"
 	REPO_PATH="${ORG_PATH}/multus-cni.v3"
 
 	if [ ! -h gopath/src/${REPO_PATH} ]; then
@@ -44,7 +44,11 @@ if [ "$GO111MODULE" == "off" ]; then
 else
 	# build with go modules
 	export GO111MODULE=on
+	BUILD_ARGS=(-o ${DEST_DIR}/multus -tags no_openssl)
+	if [ -n "$MODMODE" ]; then
+		BUILD_ARGS+=(-mod "$MODMODE")
+	fi
 
 	echo "Building plugins"
-	go build -o ${DEST_DIR}/multus -ldflags "${LDFLAGS}" "$@" ./cmd
+	go build ${BUILD_ARGS[*]} -ldflags "${LDFLAGS}" "$@" ./cmd
 fi

@@ -15,8 +15,8 @@ import (
 	k8sTypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 
-	mtypes "gopkg.in/intel/multus-cni.v3/pkg/types"
-	podresourcesapi "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
+	mtypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 )
 
 var (
@@ -27,6 +27,11 @@ var (
 
 type fakeResourceServer struct {
 	server *grpc.Server
+}
+
+//TODO: This is stub code for test, but we may need to change for the testing we use this API in the future...
+func (m *fakeResourceServer) GetAllocatableResources(ctx context.Context, req *podresourcesapi.AllocatableResourcesRequest) (*podresourcesapi.AllocatableResourcesResponse, error) {
+	return &podresourcesapi.AllocatableResourcesResponse{}, nil
 }
 
 func (m *fakeResourceServer) List(ctx context.Context, req *podresourcesapi.ListPodResourcesRequest) (*podresourcesapi.ListPodResourcesResponse, error) {
@@ -63,25 +68,27 @@ func TestKubeletclient(t *testing.T) {
 	RunSpecs(t, "Kubeletclient Suite")
 }
 
+var testKubeletSocket string
 func setUp() error {
 	tempSocketDir, err := ioutil.TempDir("", "kubelet-resource-client")
 	if err != nil {
 		return err
 	}
-	defaultPodResourcesPath = filepath.Join(tempSocketDir, defaultPodResourcesPath)
+	testingPodResourcesPath := filepath.Join(tempSocketDir, defaultPodResourcesPath)
 
-	if err := os.MkdirAll(defaultPodResourcesPath, os.ModeDir); err != nil {
+	if err := os.MkdirAll(testingPodResourcesPath, os.ModeDir); err != nil {
 		return err
 	}
 
-	socketDir = defaultPodResourcesPath
+	socketDir = testingPodResourcesPath
 	socketName = filepath.Join(socketDir, "kubelet.sock")
+	testKubeletSocket = socketName
 
 	fakeServer = &fakeResourceServer{server: grpc.NewServer()}
 	podresourcesapi.RegisterPodResourcesListerServer(fakeServer.server, fakeServer)
 	lis, err := util.CreateListener(socketName)
 	if err != nil {
-		return nil
+		return err
 	}
 	go fakeServer.server.Serve(lis)
 	return nil
@@ -109,14 +116,12 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 
 	Context("GetResourceClient()", func() {
 		It("should return no error", func() {
-			kubeletSocket = socketName
-			_, err := GetResourceClient()
+			_, err := GetResourceClient(testKubeletSocket)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should fail with missing file", func() {
-			kubeletSocket = "sampleSocketString"
-			_, err := GetResourceClient()
+			_, err := GetResourceClient("sampleSocketString")
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -138,41 +143,11 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 					},
 				},
 			}
-			kubeletSocket = socketName
-			client, err := getKubeletClient()
+			client, err := getKubeletClient(testKubeletSocket)
 			Expect(err).NotTo(HaveOccurred())
 
 			outputRMap := map[string]*mtypes.ResourceInfo{
-				"resource": &mtypes.ResourceInfo{DeviceIDs: []string{"dev0", "dev1"}},
-			}
-			resourceMap, err := client.GetPodResourceMap(fakePod)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resourceMap).ShouldNot(BeNil())
-			Expect(resourceMap).To(Equal(outputRMap))
-		})
-
-		It("should return no error with empty socket", func() {
-			podUID := k8sTypes.UID("970a395d-bb3b-11e8-89df-408d5c537d23")
-			fakePod := &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "pod-name",
-					Namespace: "pod-namespace",
-					UID:       podUID,
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{
-							Name: "container-name",
-						},
-					},
-				},
-			}
-			kubeletSocket = ""
-			client, err := getKubeletClient()
-			Expect(err).NotTo(HaveOccurred())
-
-			outputRMap := map[string]*mtypes.ResourceInfo{
-				"resource": &mtypes.ResourceInfo{DeviceIDs: []string{"dev0", "dev1"}},
+				"resource": {DeviceIDs: []string{"dev0", "dev1"}},
 			}
 			resourceMap, err := client.GetPodResourceMap(fakePod)
 			Expect(err).NotTo(HaveOccurred())
@@ -181,8 +156,7 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 		})
 
 		It("should return an error with garbage socket value", func() {
-			kubeletSocket = "/badfilepath!?//"
-			_, err := getKubeletClient()
+			_, err := getKubeletClient("/badfilepath!?//")
 			Expect(err).To(HaveOccurred())
 		})
 	})
@@ -197,8 +171,7 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 					UID:       podUID,
 				},
 			}
-			kubeletSocket = socketName
-			client, err := getKubeletClient()
+			client, err := getKubeletClient(testKubeletSocket)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = client.GetPodResourceMap(fakePod)
 			Expect(err).To(HaveOccurred())
@@ -215,8 +188,7 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 					UID:       podUID,
 				},
 			}
-			kubeletSocket = socketName
-			client, err := getKubeletClient()
+			client, err := getKubeletClient(testKubeletSocket)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = client.GetPodResourceMap(fakePod)
 			Expect(err).To(HaveOccurred())
@@ -234,8 +206,7 @@ var _ = Describe("Kubelet resource endpoint data read operations", func() {
 				},
 			}
 
-			kubeletSocket = socketName
-			client, err := getKubeletClient()
+			client, err := getKubeletClient(testKubeletSocket)
 			Expect(err).NotTo(HaveOccurred())
 
 			emptyRMap := map[string]*mtypes.ResourceInfo{}

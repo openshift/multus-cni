@@ -13,7 +13,7 @@ Generally we recommend two options: Manually place a Multus binary in your `/opt
 
 *Copy Multus Binary into place*
 
-You may acquire the Multus binary via compilation (see the [developer guide](development.md)) or download the a binary from the [GitHub releases](https://github.com/intel/multus-cni/releases) page. Copy multus binary into CNI binary directory, usually `/opt/cni/bin`. Perform this on all nodes in your cluster (master and nodes).
+You may acquire the Multus binary via compilation (see the [developer guide](development.md)) or download the a binary from the [GitHub releases](https://github.com/k8snetworkplumbingwg/multus-cni/releases) page. Copy multus binary into CNI binary directory, usually `/opt/cni/bin`. Perform this on all nodes in your cluster (master and nodes).
 
     $ cp multus /opt/cni/bin
 
@@ -35,7 +35,7 @@ Execute following commands at all Kubernetes nodes (i.e. master and minions)
 
 ```
 $ mkdir -p /etc/cni/net.d
-$ cat >/etc/cni/net.d/30-multus.conf <<EOF
+$ cat >/etc/cni/net.d/00-multus.conf <<EOF
 {
   "name": "multus-cni-network",
   "type": "multus",
@@ -264,7 +264,7 @@ $ cat <<EOF > /etc/cni/multus/net.d/macvlan2.conf
 
 ### Run pod with network annotation
 
-#### Lauch pod with text annotation
+#### Launch pod with text annotation
 
 ```
 # Execute following command at Kubernetes master
@@ -284,7 +284,7 @@ spec:
 EOF
 ```
 
-#### Lauch pod with text annotation for NetworkAttachmentDefinition in different namespace
+#### Launch pod with text annotation for NetworkAttachmentDefinition in different namespace
 
 You can also specify NetworkAttachmentDefinition with its namespace as adding `<namespace>/`
 
@@ -330,7 +330,7 @@ spec:
 EOF
 ```
 
-#### Lauch pod with text annotation with interface name
+#### Launch pod with text annotation with interface name
 
 You can also specify interface name as adding `@<ifname>`.
 
@@ -352,7 +352,7 @@ spec:
 EOF
 ```
 
-#### Lauch pod with json annotation
+#### Launch pod with json annotation
 
 ```
 # Execute following command at Kubernetes master
@@ -375,7 +375,7 @@ spec:
 EOF
 ```
 
-#### Lauch pod with json annotation for NetworkAttachmentDefinition in different namespace
+#### Launch pod with json annotation for NetworkAttachmentDefinition in different namespace
 
 You can also specify NetworkAttachmentDefinition with its namespace as adding `"namespace": "<namespace>"`.
 
@@ -400,7 +400,7 @@ spec:
 EOF
 ```
 
-#### Lauch pod with json annotation with interface
+#### Launch pod with json annotation with interface
 
 You can also specify interface name as adding `"interface": "<ifname>"`.
 
@@ -594,6 +594,10 @@ This can be used if you have your CNI configuration stored in an alternate locat
     --multus-kubeconfig-file-host=/etc/cni/net.d/multus.d/multus.kubeconfig
 
 Used only with `--multus-conf-file=auto`. Allows you to specify an alternate path to the Kubeconfig.
+
+    --multus-master-cni-file-name=
+
+The `--multus-master-cni-file-name` can be used to select the cni file as the master cni, rather than the first file in cni-conf-dir. For example, `--multus-master-cni-file-name=10-calico.conflist`.
 
     --multus-log-level=
     --multus-log-file=

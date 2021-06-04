@@ -39,11 +39,12 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
 * `confDir` (string, optional): directory for CNI config file that multus reads. default `/etc/cni/multus/net.d`
 * `cniDir` (string, optional): Multus CNI data directory, default `/var/lib/cni/multus`
 * `binDir` (string, optional): additional directory for CNI plugins which multus calls, in addition to the default (the default is typically set to `/opt/cni/bin`)
-* `kubeconfig` (string, optional): kubeconfig file for the out of cluster communication with kube-apiserver. See the example [kubeconfig](https://github.com/intel/multus-cni/blob/master/doc/node-kubeconfig.yaml). If you would like to use CRD (i.e. network attachment definition), this is required
+* `kubeconfig` (string, optional): kubeconfig file for the out of cluster communication with kube-apiserver. See the example [kubeconfig](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/docs/node-kubeconfig.yaml). If you would like to use CRD (i.e. network attachment definition), this is required
+* `logToStderr` (bool, optional): Enable or disable logging to `STDERR`. Defaults to true.
 * `logFile` (string, optional): file path for log file. multus puts log in given file
 * `logLevel` (string, optional): logging level ("debug", "error", "verbose", or "panic")
 * `namespaceIsolation` (boolean, optional): Enables a security feature where pods are only allowed to access `NetworkAttachmentDefinitions` in the namespace where the pod resides. Defaults to false.
-* `capabilities` ({}list, optional): [capabilities](https://github.com/containernetworking/cni/blob/master/CONVENTIONS.md#dynamic-plugin-specific-fields-capabilities--runtime-configuration) supported by at least one of the delegates. (NOTE: Multus only supports portMappings capability for now). See the [example](https://github.com/intel/multus-cni/blob/master/examples/multus-ptp-portmap.conf).
+* `capabilities` ({}list, optional): [capabilities](https://github.com/containernetworking/cni/blob/master/CONVENTIONS.md#dynamic-plugin-specific-fields-capabilities--runtime-configuration) supported by at least one of the delegates. (NOTE: Multus only supports portMappings/Bandwidth capability for cluster networks).
 * `readinessindicatorfile`: The path to a file whose existance denotes that the default network is ready
 
 User should chose following parameters combination (`clusterNetwork`+`defaultNetworks` or `delegates`):
@@ -59,7 +60,7 @@ User should chose following parameters combination (`clusterNetwork`+`defaultNet
 Multus will find network for clusterNetwork/defaultNetworks as following sequences:
 
 1. CRD object for given network name, in 'kube-system' namespace
-1. CNI json config file in `confDir`. Given name should be without extention, like .conf/.conflist. (e.g. "test" for "test.conf")
+1. CNI json config file in `confDir`. Given name should be without extention, like .conf/.conflist. (e.g. "test" for "test.conf"). The given name for `clusterNetwork` should match the value for `name` key in the config file (e.g. `"name": "test"` in "test.conf" when `"clusterNetwork": "test"`)
 1. Directory for CNI json config file. Multus will find alphabetically first file for the network
 1. Multus failed to find network. Multus raise error message
 
@@ -84,7 +85,15 @@ Only one option is necessary to configure this functionality:
 
 You may wish to enable some enhanced logging for Multus, especially during the process where you're configuring Multus and need to understand what is or isn't working with your particular configuration.
 
-Multus will always log via `STDERR`, which is the standard method by which CNI plugins communicate errors, and these errors are logged by the Kubelet. This method is always enabled.
+#### Logging via STDERR
+
+By default, Multus will log via `STDERR`, which is the standard method by which CNI plugins communicate errors, and these errors are logged by the Kubelet.
+
+Optionally, you may disable this method by setting the `logToStderr` option in your CNI configuration:
+
+```
+    "logToStderr": false,
+```
 
 #### Writing to a Log File
 

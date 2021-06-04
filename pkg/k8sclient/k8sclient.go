@@ -38,12 +38,12 @@ import (
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
-	"gopkg.in/intel/multus-cni.v3/pkg/kubeletclient"
-	"gopkg.in/intel/multus-cni.v3/pkg/logging"
-	"gopkg.in/intel/multus-cni.v3/pkg/types"
 	nettypes "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netclient "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/kubeletclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 const (
@@ -259,7 +259,7 @@ func getKubernetesDelegate(client *ClientInfo, net *types.NetworkSelectionElemen
 		logging.Debugf("getKubernetesDelegate: found resourceName annotation : %s", resourceName)
 
 		if resourceMap == nil {
-			ck, err := kubeletclient.GetResourceClient()
+			ck, err := kubeletclient.GetResourceClient("")
 			if err != nil {
 				return nil, resourceMap, logging.Errorf("getKubernetesDelegate: failed to get a ResourceClient instance: %v", err)
 			}
