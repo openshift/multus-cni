@@ -34,11 +34,11 @@ import (
 	cniversion "github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
-	"gopkg.in/intel/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/intel/multus-cni.v3/pkg/logging"
-	testhelpers "gopkg.in/intel/multus-cni.v3/pkg/testing"
-	"gopkg.in/intel/multus-cni.v3/pkg/types"
 	netfake "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/fake"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/testing"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -64,10 +64,11 @@ type fakePlugin struct {
 type fakeExec struct {
 	cniversion.PluginDecoder
 
-	addIndex int
-	delIndex int
-	chkIndex int
-	plugins  []*fakePlugin
+	addIndex        int
+	delIndex        int
+	chkIndex        int
+	expectedDelSkip int
+	plugins         []*fakePlugin
 }
 
 func (f *fakeExec) addPlugin(expectedEnv []string, expectedIfname, expectedConf string, result *current.Result, err error) {
@@ -78,6 +79,9 @@ func (f *fakeExec) addPlugin(expectedEnv []string, expectedIfname, expectedConf 
 		result:         result,
 		err:            err,
 	})
+	if err != nil && err.Error() == "missing network name" {
+		f.expectedDelSkip++
+	}
 }
 
 func (f *fakeExec) addPlugin020(expectedEnv []string, expectedIfname, expectedConf string, result *types020.Result, err error) {
@@ -88,6 +92,9 @@ func (f *fakeExec) addPlugin020(expectedEnv []string, expectedIfname, expectedCo
 		result:         result,
 		err:            err,
 	})
+	if err != nil && err.Error() == "missing network name" {
+		f.expectedDelSkip++
+	}
 }
 
 func matchArray(a1, a2 []string) {
@@ -135,7 +142,7 @@ func (f *fakeExec) ExecPlugin(ctx context.Context, pluginPath string, stdinData 
 		f.chkIndex++
 	case "DEL":
 		Expect(len(f.plugins)).To(BeNumerically(">", f.delIndex))
-		index = len(f.plugins) - f.delIndex - 1
+		index = len(f.plugins) - f.expectedDelSkip - f.delIndex - 1
 		f.delIndex++
 	default:
 		// Should never be reached
@@ -143,7 +150,8 @@ func (f *fakeExec) ExecPlugin(ctx context.Context, pluginPath string, stdinData 
 	}
 	plugin := f.plugins[index]
 
-	GinkgoT().Logf("[%s %d] exec plugin %q found %+v\n", cmd, index, pluginPath, plugin)
+	//GinkgoT().Logf("[%s %d] exec plugin %q found %+v\n", cmd, index, pluginPath, plugin)
+	fmt.Printf("[%s %d] exec plugin %q found %+v\n", cmd, index, pluginPath, plugin)
 
 	// strip prevResult from stdinData; tests don't need it
 	var m map[string]interface{}
@@ -1284,7 +1292,7 @@ var _ = Describe("multus operations cniVersion 0.2.0 config", func() {
 		os.Setenv("CNI_COMMAND", "ADD")
 		os.Setenv("CNI_IFNAME", "eth0")
 		_, err = CmdAdd(args, fExec, nil)
-		Expect(fExec.addIndex).To(Equal(2))
+		Expect(fExec.addIndex).To(Equal(1))
 		Expect(fExec.delIndex).To(Equal(2))
 		Expect(err).To(HaveOccurred())
 
@@ -1500,7 +1508,7 @@ var _ = Describe("multus operations cniVersion 0.2.0 config", func() {
 		recorder := clientInfo.EventRecorder.(*record.FakeRecorder)
 		events := collectEvents(recorder.Events)
 		Expect(len(events)).To(Equal(3))
-		Expect(events[0]).To(Equal("Normal AddedInterface Add eth0 [1.1.1.2/24]"))
+		Expect(events[0]).To(Equal("Normal AddedInterface Add eth0 [1.1.1.2/24] from weave1"))
 		Expect(events[1]).To(Equal("Normal AddedInterface Add net1 [1.1.1.3/24] from test/net1"))
 		Expect(events[2]).To(Equal("Normal AddedInterface Add net2 [1.1.1.4/24] from test/net2"))
 	})
@@ -2025,14 +2033,16 @@ var _ = Describe("multus operations cniVersion 0.2.0 config", func() {
 		os.Setenv("CNI_COMMAND", "ADD")
 		os.Setenv("CNI_IFNAME", "eth0")
 
-		binDir := "/opt/cni/bin"
+		fakeMultusNetConf := types.NetConf{
+			BinDir: "/opt/cni/bin",
+		}
 		// use fExec for the exec param
 		rawnetconflist := []byte(`{"cniVersion":"0.2.0","name":"weave1","type":"weave-net"}`)
 		k8sargs, err := k8sclient.GetK8sArgs(args)
 		n, err := types.LoadNetConf(args.StdinData)
 		rt, _ := types.CreateCNIRuntimeConf(args, k8sargs, args.IfName, n.RuntimeConfig, nil)
 
-		err = conflistDel(rt, rawnetconflist, binDir, fExec)
+		err = conflistDel(rt, rawnetconflist, &fakeMultusNetConf, fExec)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -2527,14 +2537,14 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 		fExec.addPlugin(nil, "eth0", expectedConf1, expectedResult1, nil)
 
 		// This plugin invocation should fail
-		err := fmt.Errorf("expected plugin failure")
+		err := fmt.Errorf("missing network name")
 		fExec.addPlugin(nil, "net1", expectedConf2, nil, err)
 
 		os.Setenv("CNI_COMMAND", "ADD")
 		os.Setenv("CNI_IFNAME", "eth0")
 		_, err = CmdAdd(args, fExec, nil)
-		Expect(fExec.addIndex).To(Equal(2))
-		Expect(fExec.delIndex).To(Equal(2))
+		Expect(fExec.addIndex).To(Equal(1))
+		Expect(fExec.delIndex).To(Equal(1))
 		Expect(err).To(HaveOccurred())
 
 		// Cleanup default network file.
@@ -3271,14 +3281,16 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 		os.Setenv("CNI_COMMAND", "ADD")
 		os.Setenv("CNI_IFNAME", "eth0")
 
-		binDir := "/opt/cni/bin"
+		fakeMultusNetConf := types.NetConf{
+			BinDir: "/opt/cni/bin",
+		}
 		// use fExec for the exec param
 		rawnetconflist := []byte(`{"cniVersion":"0.4.0","name":"weave1","type":"weave-net"}`)
 		k8sargs, err := k8sclient.GetK8sArgs(args)
 		n, err := types.LoadNetConf(args.StdinData)
 		rt, _ := types.CreateCNIRuntimeConf(args, k8sargs, args.IfName, n.RuntimeConfig, nil)
 
-		err = conflistDel(rt, rawnetconflist, binDir, fExec)
+		err = conflistDel(rt, rawnetconflist, &fakeMultusNetConf, fExec)
 		Expect(err).To(HaveOccurred())
 	})
 })

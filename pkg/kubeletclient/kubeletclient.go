@@ -1,50 +1,46 @@
 package kubeletclient
 
 import (
+	"net/url"
 	"os"
-	"path/filepath"
 	"time"
 
-	"gopkg.in/intel/multus-cni.v3/pkg/checkpoint"
-	"gopkg.in/intel/multus-cni.v3/pkg/logging"
-	"gopkg.in/intel/multus-cni.v3/pkg/types"
 	"golang.org/x/net/context"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/checkpoint"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	v1 "k8s.io/api/core/v1"
+	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 	"k8s.io/kubernetes/pkg/kubelet/apis/podresources"
-	podresourcesapi "k8s.io/kubernetes/pkg/kubelet/apis/podresources/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/util"
 )
 
 const (
 	defaultKubeletSocketFile   = "kubelet.sock"
 	defaultPodResourcesMaxSize = 1024 * 1024 * 16 // 16 Mb
-)
-
-var (
-	kubeletSocket           string
-	defaultPodResourcesPath = "/var/lib/kubelet/pod-resources"
+	defaultPodResourcesPath    = "/var/lib/kubelet/pod-resources"
 )
 
 // GetResourceClient returns an instance of ResourceClient interface initialized with Pod resource information
-func GetResourceClient() (types.ResourceClient, error) {
+func GetResourceClient(kubeletSocket string) (types.ResourceClient, error) {
 	// If Kubelet resource API endpoint exist use that by default
 	// Or else fallback with checkpoint file
-	if hasKubeletAPIEndpoint() {
+	if hasKubeletAPIEndpoint(kubeletSocket) {
 		logging.Debugf("GetResourceClient: using Kubelet resource API endpoint")
-		return getKubeletClient()
+		return getKubeletClient(kubeletSocket)
 	}
 
 	logging.Debugf("GetResourceClient: using Kubelet device plugin checkpoint")
 	return checkpoint.GetCheckpoint()
 }
 
-func getKubeletClient() (types.ResourceClient, error) {
+func getKubeletClient(kubeletSocket string) (types.ResourceClient, error) {
 	newClient := &kubeletClient{}
 	if kubeletSocket == "" {
-		kubeletSocket = util.LocalEndpoint(defaultPodResourcesPath, podresources.Socket)
+		kubeletSocket, _ = util.LocalEndpoint(defaultPodResourcesPath, podresources.Socket)
 	}
 
-	client, conn, err := podresources.GetClient(kubeletSocket, 10*time.Second, defaultPodResourcesMaxSize)
+	client, conn, err := podresources.GetV1Client(kubeletSocket, 10*time.Second, defaultPodResourcesMaxSize)
 	if err != nil {
 		return nil, logging.Errorf("getKubeletClient: error getting grpc client: %v\n", err)
 	}
@@ -102,10 +98,13 @@ func (rc *kubeletClient) GetPodResourceMap(pod *v1.Pod) (map[string]*types.Resou
 	return resourceMap, nil
 }
 
-func hasKubeletAPIEndpoint() bool {
+func hasKubeletAPIEndpoint(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
 	// Check for kubelet resource API socket file
-	kubeletAPISocket := filepath.Join(defaultPodResourcesPath, defaultKubeletSocketFile)
-	if _, err := os.Stat(kubeletAPISocket); err != nil {
+	if _, err := os.Stat(u.Path); err != nil {
 		logging.Debugf("hasKubeletAPIEndpoint: error looking up kubelet resource api socket file: %q", err)
 		return false
 	}

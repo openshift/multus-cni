@@ -6,7 +6,7 @@ Multus now uses [gopkg.in](http://gopkg.in/) to expose its code as library.
 You can use following command to import our code into your go code.
 
 ```
-go get gopkg.in/intel/multus-cni.v3
+go get gopkg.in/k8snetworkplumbingwg/multus-cni.v3
 ```
 
 
@@ -25,7 +25,7 @@ If an issue is closed that you don't feel is sufficiently resolved, please feel 
 You can use the built in `./hack/build-go.sh` script!
 
 ```
-git clone https://github.com/intel/multus-cni.git
+git clone https://github.com/k8snetworkplumbingwg/multus-cni.git
 cd multus-cni
 ./hack/build-go.sh
 ```
@@ -47,6 +47,6 @@ The following are the best practices for multus logging:
 * `logging.Panicf()` only be used for critical errors (it should NOT normally be used)
 
 
-## CI Introduction
+## Multus release schedule
 
-TBD
+On the first maintainer's meeting, twice yearly, after January 1st and July 1st, if a new version has not been tagged, a new version will tagged.

@@ -18,8 +18,11 @@ MULTUS_CONF_FILE="/usr/src/multus-cni/images/70-multus.conf"
 MULTUS_AUTOCONF_DIR="/host/etc/cni/net.d"
 MULTUS_BIN_FILE="/usr/src/multus-cni/bin/multus"
 MULTUS_KUBECONFIG_FILE_HOST="/etc/cni/net.d/multus.d/multus.kubeconfig"
+MULTUS_TEMP_KUBECONFIG="/tmp/multus.kubeconfig"
+MULTUS_MASTER_CNI_FILE_NAME=""
 MULTUS_NAMESPACE_ISOLATION=false
 MULTUS_GLOBAL_NAMESPACES=""
+MULTUS_LOG_TO_STDERR=true
 MULTUS_LOG_LEVEL=""
 MULTUS_LOG_FILE=""
 MULTUS_READINESS_INDICATOR_FILE=""
@@ -38,7 +41,9 @@ function usage()
     echo -e "will be copied to the corresponding configuration directory. When "
     echo -e "'--multus-conf-file=auto' is used, 00-multus.conf will be automatically "
     echo -e "generated from the CNI configuration file of the master plugin (the first file "
-    echo -e "in lexicographical order in cni-conf-dir)."
+    echo -e "in lexicographical order in cni-conf-dir). When '--multus-master-cni-file-name'"
+    echo -e "is used, 00-multus.conf will only be automatically generated from the specific"
+    echo -e "file rather than the first file."
     echo -e ""
     echo -e "./entrypoint.sh"
     echo -e "\t-h --help"
@@ -49,9 +54,11 @@ function usage()
     echo -e "\t--multus-bin-file=$MULTUS_BIN_FILE"
     echo -e "\t--skip-multus-binary-copy=$SKIP_BINARY_COPY"
     echo -e "\t--multus-kubeconfig-file-host=$MULTUS_KUBECONFIG_FILE_HOST"
+    echo -e "\t--multus-master-cni-file-name=$MULTUS_MASTER_CNI_FILE_NAME (empty by default, example: 10-calico.conflist)"
     echo -e "\t--namespace-isolation=$MULTUS_NAMESPACE_ISOLATION"
     echo -e "\t--global-namespaces=$MULTUS_GLOBAL_NAMESPACES (used only with --namespace-isolation=true)"
     echo -e "\t--multus-autoconfig-dir=$MULTUS_AUTOCONF_DIR (used only with --multus-conf-file=auto)"
+    echo -e "\t--multus-log-to-stderr=$MULTUS_LOG_TO_STDERR (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--multus-log-level=$MULTUS_LOG_LEVEL (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--multus-log-file=$MULTUS_LOG_FILE (empty by default, used only with --multus-conf-file=auto)"
     echo -e "\t--override-network-name=false (used only with --multus-conf-file=auto)"
@@ -108,11 +115,17 @@ while [ "$1" != "" ]; do
         --multus-kubeconfig-file-host)
             MULTUS_KUBECONFIG_FILE_HOST=$VALUE
             ;;
+        --multus-master-cni-file-name)
+            MULTUS_MASTER_CNI_FILE_NAME=$VALUE
+            ;;
         --namespace-isolation)
             MULTUS_NAMESPACE_ISOLATION=$VALUE
             ;;
         --global-namespaces)
             MULTUS_GLOBAL_NAMESPACES=$VALUE
+            ;;
+        --multus-log-to-stderr)
+            MULTUS_LOG_TO_STDERR=$VALUE
             ;;
         --multus-log-level)
             MULTUS_LOG_LEVEL=$VALUE
@@ -213,9 +226,10 @@ if [ -f "$SERVICE_ACCOUNT_PATH/token" ]; then
   # to skip TLS verification for now.  We should eventually support
   # writing more complete kubeconfig files. This is only used
   # if the provided CNI network config references it.
-  touch $MULTUS_KUBECONFIG
-  chmod ${KUBECONFIG_MODE:-600} $MULTUS_KUBECONFIG
-  cat > $MULTUS_KUBECONFIG <<EOF
+  touch $MULTUS_TEMP_KUBECONFIG
+  chmod ${KUBECONFIG_MODE:-600} $MULTUS_TEMP_KUBECONFIG
+  # Write the kubeconfig to a temp file first.
+  cat > $MULTUS_TEMP_KUBECONFIG <<EOF
 # Kubeconfig file for Multus CNI plugin.
 apiVersion: v1
 kind: Config
@@ -236,6 +250,9 @@ contexts:
 current-context: multus-context
 EOF
 
+  # Atomically move the temp kubeconfig to its permanent home.
+  mv -f $MULTUS_TEMP_KUBECONFIG $MULTUS_KUBECONFIG
+
 else
   warn "Doesn't look like we're running in a kubernetes environment (no serviceaccount token)"
 fi
@@ -250,11 +267,15 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
   found_master=false
   tries=0
   while [ $found_master == false ]; do
-    MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR | grep -E '\.conf(list)?$' | grep -Ev '00-multus\.conf' | head -1)"
+    if [ "$MULTUS_MASTER_CNI_FILE_NAME" != "" ]; then
+        MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR/$MULTUS_MASTER_CNI_FILE_NAME)" || true
+    else
+        MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR | grep -E '\.conf(list)?$' | grep -Ev '00-multus\.conf' | head -1)"
+    fi
     if [ "$MASTER_PLUGIN" == "" ]; then
       if [ $tries -lt 600 ]; then
         if ! (($tries % 5)); then
-          log "Attemping to find master plugin configuration, attempt $tries"
+          log "Attempting to find master plugin configuration, attempt $tries"
         fi
         let "tries+=1"
         sleep 1;
@@ -275,6 +296,12 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
       if [ ! -z "${MULTUS_GLOBAL_NAMESPACES// }" ]; then
         GLOBAL_NAMESPACES_STRING="\"globalNamespaces\": \"$MULTUS_GLOBAL_NAMESPACES\","
       fi
+
+      LOG_TO_STDERR_STRING=""
+      if [ "$MULTUS_LOG_TO_STDERR" == false ]; then
+        LOG_TO_STDERR_STRING="\"logToStderr\": false,"
+      fi
+
 
       LOG_LEVEL_STRING=""
       if [ ! -z "${MULTUS_LOG_LEVEL// }" ]; then
@@ -352,8 +379,10 @@ EOF
           $CNI_VERSION_STRING
           "name": "$MASTER_PLUGIN_NET_NAME",
           "type": "multus",
+          $NESTED_CAPABILITIES_STRING
           $ISOLATION_STRING
           $GLOBAL_NAMESPACES_STRING
+          $LOG_TO_STDERR_STRING
           $LOG_LEVEL_STRING
           $LOG_FILE_STRING
           $ADDITIONAL_BIN_DIR_STRING
