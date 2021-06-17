@@ -25,6 +25,7 @@ RUN ls -lathr /usr/src/multus-cni/bin/multus
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/4.8:base
+RUN yum install -y inotify-tools
 RUN mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/bin && \
        mkdir -p /usr/src/multus-cni/rhel7/bin && \
