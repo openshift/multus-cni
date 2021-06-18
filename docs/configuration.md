@@ -24,6 +24,7 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
     "systemNamespaces": ["kube-system", "admin"],
     "multusNamespace": "kube-system",
 "Note2":"NOTE: If you use clusterNetwork/defaultNetworks, delegates is ignored",
+    "disableAnnotationRead": false,
     "delegates": [{
         "type": "weave-net",
         "hairpinMode": true
