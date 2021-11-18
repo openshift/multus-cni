@@ -36,18 +36,19 @@ SKIP_BINARY_COPY=false
 # Give help text for parameters.
 function usage()
 {
-    echo -e "This is an entrypoint script for Multus CNI to overlay its configuration into"
-    echo -e "locations in a filesystem. The configuration file will be copied to the"
-    echo -e "corresponding configuration directory. When '--multus-conf-file=auto' is used,"
-    echo -e "00-multus.conf will be automatically generated from the CNI configuration file"
-    echo -e "of the master plugin (the first file in lexicographical order in cni-conf-dir)."
-    echo -e "When '--multus-master-cni-file-name' is used, 00-multus.conf will be"
-    echo -e "automatically generated from the specific file rather than the first file."
+    echo -e "This is an entrypoint script for Multus CNI to overlay its binary and "
+    echo -e "configuration into locations in a filesystem. The configuration & binary file "
+    echo -e "will be copied to the corresponding configuration directory. When "
+    echo -e "'--multus-conf-file=auto' is used, 00-multus.conf will be automatically "
+    echo -e "generated from the CNI configuration file of the master plugin (the first file "
+    echo -e "in lexicographical order in cni-conf-dir). When '--multus-master-cni-file-name'"
+    echo -e "is used, 00-multus.conf will only be automatically generated from the specific"
+    echo -e "file rather than the first file."
     echo -e ""
     echo -e "./entrypoint.sh"
     echo -e "\t-h --help"
-    echo -e "\t--cni-bin-dir=$CNI_BIN_DIR"
     echo -e "\t--cni-conf-dir=$CNI_CONF_DIR"
+    echo -e "\t--cni-bin-dir=$CNI_BIN_DIR"
     echo -e "\t--cni-version=<cniVersion (e.g. 0.3.1)>"
     echo -e "\t--multus-conf-file=$MULTUS_CONF_FILE"
     echo -e "\t--multus-bin-file=$MULTUS_BIN_FILE"
@@ -99,9 +100,6 @@ while [ "$1" != "" ]; do
         --cni-version)
             CNI_VERSION=$VALUE
             ;;
-        --cni-bin-dir)
-            CNI_BIN_DIR=$VALUE
-            ;;
         --cni-conf-dir)
             CNI_CONF_DIR=$VALUE
             ;;
@@ -110,6 +108,9 @@ while [ "$1" != "" ]; do
             ;;
         --multus-conf-file)
             MULTUS_CONF_FILE=$VALUE
+            ;;
+        --multus-bin-file)
+            MULTUS_BIN_FILE=$VALUE
             ;;
         --multus-kubeconfig-file-host)
             MULTUS_KUBECONFIG_FILE_HOST=$VALUE
@@ -284,7 +285,7 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
   tries=0
   while [ $found_master == false ]; do
     if [ "$MULTUS_MASTER_CNI_FILE_NAME" != "" ]; then
-        MASTER_PLUGIN="$MULTUS_MASTER_CNI_FILE_NAME"
+        MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR/$MULTUS_MASTER_CNI_FILE_NAME)" || true
     else
         MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR | grep -E '\.conf(list)?$' | grep -Ev '00-multus\.conf' | head -1)"
     fi
@@ -300,7 +301,6 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
         exit 1;
       fi
     else
-      log "Using MASTER_PLUGIN: $MASTER_PLUGIN"
 
       found_master=true
 

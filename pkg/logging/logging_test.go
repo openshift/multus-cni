@@ -42,13 +42,13 @@ var _ = Describe("logging operations", func() {
 	It("Check file setter with empty", func() {
 		SetLogFile("/tmp/foobar.logging")
 		Expect(loggingW).NotTo(Equal(nil))
-		// check file existence
+		// check file existance
 	})
 
 	It("Check file setter with bad filepath", func() {
 		SetLogFile("/invalid/filepath")
 		Expect(loggingW).NotTo(Equal(nil))
-		// check file existence
+		// check file existance
 	})
 
 	It("Check loglevel setter", func() {
