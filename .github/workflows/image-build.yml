@@ -1,26 +1,8 @@
 name: Image build
 on: [pull_request]
 jobs:
-  ep-build-amd64:
-    name: Image build/amd64 LEGACY entrypoint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
-      - name: Build container image
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: false
-          tags: ghcr.io/${{ github.repository }}:ep-latest-amd64
-          file: images/Dockerfile
-
   build-amd64:
-    name: Image build/amd64 daemonized alternative
+    name: Image build/amd64
     runs-on: ubuntu-latest
     steps:
       - name: Check out code into the Go module directory
@@ -35,7 +17,7 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-amd64
-          file: images/Dockerfile.thick
+          file: deployments/Dockerfile
 
   build-arm64:
     name: Image build/arm64
@@ -53,7 +35,7 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-arm64
-          file: images/Dockerfile.arm64
+          file: deployments/Dockerfile.arm64
 
   build-arm32:
     name: Image build/arm32
@@ -71,7 +53,7 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-arm32
-          file: images/Dockerfile.arm32
+          file: deployments/Dockerfile.arm32
 
   build-ppc64le:
     name: Image build/ppc64le
@@ -89,7 +71,7 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-ppc64le
-          file: images/Dockerfile.ppc64le
+          file: deployments/Dockerfile.ppc64le
 
   build-s390:
     name: Image build/s390x
@@ -107,7 +89,7 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-s390x
-          file: images/Dockerfile.s390x
+          file: deployments/Dockerfile.s390x
 
   build-origin:
     name: Image build/origin
@@ -125,4 +107,4 @@ jobs:
           context: .
           push: false
           tags: ghcr.io/${{ github.repository }}:latest-origin
-          file: images/Dockerfile.openshift
+          file: deployments/Dockerfile.openshift

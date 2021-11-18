@@ -145,15 +145,10 @@ spec:
       containers:
       - name: kube-multus
         image: localhost:5000/multus:e2e
-        command: [ "/usr/src/multus-cni/bin/multus-daemon" ]
+        command: ["/entrypoint.sh"]
         args:
-        - "-multus-conf-file=auto"
-        - "-cni-version=0.3.1"
-        - "-cni-config-dir=/host/etc/cni/net.d"
-        - "-multus-autoconfig-dir=/host/etc/cni/net.d"
-        - "-multus-log-to-stderr=true"
-        - "-multus-log-level=debug"
-        - "-multus-log-file=/tmp/multus.log"
+        - "--multus-conf-file=auto"
+        - "--cni-version=0.3.1"
         resources:
           requests:
             cpu: "100m"
@@ -170,40 +165,6 @@ spec:
           mountPath: /host/opt/cni/bin
         - name: multus-cfg
           mountPath: /tmp/multus-conf
-      initContainers:
-      - name: install-multus-binary
-        image: localhost:5000/multus:e2e
-        command:
-          - "cp"
-          - "/usr/src/multus-cni/bin/multus"
-          - "/host/opt/cni/bin/multus"
-        resources:
-          requests:
-            cpu: "10m"
-            memory: "15Mi"
-        securityContext:
-          privileged: true
-        volumeMounts:
-          - name: cnibin
-            mountPath: /host/opt/cni/bin
-            mountPropagation: Bidirectional
-      - name: generate-kubeconfig
-        image: localhost:5000/multus:e2e
-        command:
-          - "/usr/src/multus-cni/bin/generate-kubeconfig"
-        args:
-          - "-k8s-service-host=$(KUBERNETES_SERVICE_HOST)"
-          - "-k8s-service-port=$(KUBERNETES_SERVICE_PORT)"
-        resources:
-          requests:
-            cpu: "10m"
-            memory: "15Mi"
-        securityContext:
-          privileged: true
-        volumeMounts:
-          - name: cni
-            mountPath: /host/etc/cni/net.d
-            mountPropagation: Bidirectional
       volumes:
         - name: cni
           hostPath:
