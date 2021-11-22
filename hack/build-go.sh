@@ -21,7 +21,7 @@ if [ -z "$VERSION" ]; then
 fi
 DATE=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" --iso-8601=seconds)
 COMMIT=${COMMIT:-$(git rev-parse --verify HEAD)}
-LDFLAGS="-X main.version=${VERSION:-master} -X main.commit=${COMMIT} -X main.date=${DATE}"
+LDFLAGS="-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.version=${VERSION:-master} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.commit=${COMMIT} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.date=${DATE}"
 export CGO_ENABLED=0
 
 # this if... will be removed when gomodules goes default
@@ -41,6 +41,8 @@ if [ "$GO111MODULE" == "off" ]; then
 	export GOBIN=${PWD}/bin
 	export GOPATH=${PWD}/gopath
 	go build -o ${PWD}/bin/multus -tags no_openssl -ldflags "${LDFLAGS}" "$@" ${REPO_PATH}/cmd
+	go build -o ${PWD}/bin/generate-kubeconfig -tags no_openssl -ldflags "${LDFLAGS}" ${REPO_PATH}/cmd/config-generation
+	go build -o ${PWD}/bin/multus-daemon -tags no_openssl -ldflags "${LDFLAGS}" "$@" ${REPO_PATH}/cmd/controller/
 else
 	# build with go modules
 	export GO111MODULE=on
@@ -51,4 +53,8 @@ else
 
 	echo "Building plugins"
 	go build ${BUILD_ARGS[*]} -ldflags "${LDFLAGS}" "$@" ./cmd
+	echo "Building spec generators"
+	go build -o "${DEST_DIR}"/generate-kubeconfig -ldflags "${LDFLAGS}" ./cmd/config-generation
+	echo "Building multus controller"
+	go build -o "${DEST_DIR}"/multus-daemon -ldflags "${LDFLAGS}" ./cmd/controller/
 fi
