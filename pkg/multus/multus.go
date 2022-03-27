@@ -206,7 +206,7 @@ func confCheck(rt *libcni.RuntimeConf, rawNetconf []byte, multusNetconf *types.N
 }
 
 func confDel(rt *libcni.RuntimeConf, rawNetconf []byte, multusNetconf *types.NetConf, exec invoke.Exec) error {
-	logging.Debugf("conflistDel: %v, %s", rt, string(rawNetconf))
+	logging.Debugf("confDel: %v, %s", rt, string(rawNetconf))
 	// In part, adapted from K8s pkg/kubelet/dockershim/network/cni/cni.go
 	binDirs := filepath.SplitList(os.Getenv("CNI_PATH"))
 	binDirs = append([]string{multusNetconf.BinDir}, binDirs...)
@@ -285,23 +285,15 @@ func conflistDel(rt *libcni.RuntimeConf, rawnetconflist []byte, multusNetconf *t
 	return err
 }
 
-func delegateAdd(exec invoke.Exec, kubeClient *k8s.ClientInfo, pod *v1.Pod, ifName string, delegate *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf, cniArgs string) (cnitypes.Result, error) {
-	logging.Debugf("delegateAdd: %v, %s, %v, %v", exec, ifName, delegate, rt)
-	if os.Setenv("CNI_IFNAME", ifName) != nil {
-		return nil, logging.Errorf("delegateAdd: error setting environment variable CNI_IFNAME")
-	}
+func delegateAdd(exec invoke.Exec, kubeClient *k8s.ClientInfo, pod *v1.Pod, delegate *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf) (cnitypes.Result, error) {
+	logging.Debugf("delegateAdd: %v, %v, %v", exec, delegate, rt)
 
-	if err := validateIfName(os.Getenv("CNI_NETNS"), ifName); err != nil {
-		return nil, logging.Errorf("delegateAdd: cannot set %q interface name to %q: %v", delegate.Conf.Type, ifName, err)
+	if err := validateIfName(rt.NetNS, rt.IfName); err != nil {
+		return nil, logging.Errorf("delegateAdd: cannot set %q interface name to %q: %v", delegate.Conf.Type, rt.IfName, err)
 	}
 
 	// Deprecated in ver 3.5.
 	if delegate.MacRequest != "" || delegate.IPRequest != nil {
-		if cniArgs != "" {
-			cniArgs = fmt.Sprintf("%s;IgnoreUnknown=true", cniArgs)
-		} else {
-			cniArgs = "IgnoreUnknown=true"
-		}
 		if delegate.MacRequest != "" {
 			// validate Mac address
 			_, err := net.ParseMAC(delegate.MacRequest)
@@ -309,8 +301,7 @@ func delegateAdd(exec invoke.Exec, kubeClient *k8s.ClientInfo, pod *v1.Pod, ifNa
 				return nil, logging.Errorf("delegateAdd: failed to parse mac address %q", delegate.MacRequest)
 			}
 
-			cniArgs = fmt.Sprintf("%s;MAC=%s", cniArgs, delegate.MacRequest)
-			logging.Debugf("delegateAdd: set MAC address %q to %q", delegate.MacRequest, ifName)
+			logging.Debugf("delegateAdd: set MAC address %q to %q", delegate.MacRequest, rt.IfName)
 			rt.Args = append(rt.Args, [2]string{"MAC", delegate.MacRequest})
 		}
 
@@ -328,8 +319,7 @@ func delegateAdd(exec invoke.Exec, kubeClient *k8s.ClientInfo, pod *v1.Pod, ifNa
 			}
 
 			ips := strings.Join(delegate.IPRequest, ",")
-			cniArgs = fmt.Sprintf("%s;IP=%s", cniArgs, ips)
-			logging.Debugf("delegateAdd: set IP address %q to %q", ips, ifName)
+			logging.Debugf("delegateAdd: set IP address %q to %q", ips, rt.IfName)
 			rt.Args = append(rt.Args, [2]string{"IP", ips})
 		}
 	}
@@ -390,11 +380,8 @@ func delegateAdd(exec invoke.Exec, kubeClient *k8s.ClientInfo, pod *v1.Pod, ifNa
 	return result, nil
 }
 
-func delegateCheck(exec invoke.Exec, ifName string, delegateConf *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf) error {
-	logging.Debugf("delegateCheck: %v, %s, %v, %v", exec, ifName, delegateConf, rt)
-	if os.Setenv("CNI_IFNAME", ifName) != nil {
-		return logging.Errorf("delegateCheck: error setting environment variable CNI_IFNAME")
-	}
+func delegateCheck(exec invoke.Exec, delegateConf *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf) error {
+	logging.Debugf("delegateCheck: %v, %v, %v", exec, delegateConf, rt)
 
 	if logging.GetLoggingLevel() >= logging.VerboseLevel {
 		var cniConfName string
@@ -422,11 +409,8 @@ func delegateCheck(exec invoke.Exec, ifName string, delegateConf *types.Delegate
 	return err
 }
 
-func delegateDel(exec invoke.Exec, pod *v1.Pod, ifName string, delegateConf *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf) error {
-	logging.Debugf("delegateDel: %v, %v, %s, %v, %v", exec, pod, ifName, delegateConf, rt)
-	if os.Setenv("CNI_IFNAME", ifName) != nil {
-		return logging.Errorf("delegateDel: error setting environment variable CNI_IFNAME")
-	}
+func delegateDel(exec invoke.Exec, pod *v1.Pod, delegateConf *types.DelegateNetConf, rt *libcni.RuntimeConf, multusNetconf *types.NetConf) error {
+	logging.Debugf("delegateDel: %v, %v, %v, %v", exec, pod, delegateConf, rt)
 
 	if logging.GetLoggingLevel() >= logging.VerboseLevel {
 		var confName string
@@ -463,16 +447,13 @@ func delegateDel(exec invoke.Exec, pod *v1.Pod, ifName string, delegateConf *typ
 // with each of the delegates' configuration
 func delPlugins(exec invoke.Exec, pod *v1.Pod, args *skel.CmdArgs, k8sArgs *types.K8sArgs, delegates []*types.DelegateNetConf, lastIdx int, netRt *types.RuntimeConfig, multusNetconf *types.NetConf) error {
 	logging.Debugf("delPlugins: %v, %v, %v, %v, %v, %d, %v", exec, pod, args, k8sArgs, delegates, lastIdx, netRt)
-	if os.Setenv("CNI_COMMAND", "DEL") != nil {
-		return logging.Errorf("delPlugins: error setting environment variable CNI_COMMAND to a value of DEL")
-	}
 
 	var errorstrings []string
 	for idx := lastIdx; idx >= 0; idx-- {
 		ifName := getIfname(delegates[idx], args.IfName, idx)
 		rt, cniDeviceInfoPath := types.CreateCNIRuntimeConf(args, k8sArgs, ifName, netRt, delegates[idx])
 		// Attempt to delete all but do not error out, instead, collect all errors.
-		if err := delegateDel(exec, pod, ifName, delegates[idx], rt, multusNetconf); err != nil {
+		if err := delegateDel(exec, pod, delegates[idx], rt, multusNetconf); err != nil {
 			errorstrings = append(errorstrings, err.Error())
 		}
 		if cniDeviceInfoPath != "" {
@@ -551,7 +532,8 @@ func getPod(kubeClient *k8s.ClientInfo, k8sArgs *types.K8sArgs, warnOnly bool) (
 		}
 	}
 
-	if podUID != "" && string(pod.UID) != podUID {
+	// In case of static pod, UID through kube api is different because of mirror pod, hence it is expected.
+	if podUID != "" && string(pod.UID) != podUID && !k8s.IsStaticPod(pod) {
 		msg := fmt.Sprintf("expected pod UID %q but got %q from Kube API", podUID, pod.UID)
 		if warnOnly {
 			// On CNI DEL we just operate on the cache when these mismatch, we don't error out.
@@ -623,7 +605,6 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 
 	var result, tmpResult cnitypes.Result
 	var netStatus []nettypes.NetworkStatus
-	cniArgs := os.Getenv("CNI_ARGS")
 	for idx, delegate := range n.Delegates {
 		ifName := getIfname(delegate, args.IfName, idx)
 		rt, cniDeviceInfoPath := types.CreateCNIRuntimeConf(args, k8sArgs, ifName, n.RuntimeConfig, delegate)
@@ -636,10 +617,11 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 			}
 		}
 
-		tmpResult, err = delegateAdd(exec, kubeClient, pod, ifName, delegate, rt, n, cniArgs)
+		netName := ""
+		tmpResult, err = delegateAdd(exec, kubeClient, pod, delegate, rt, n)
 		if err != nil {
 			// If the add failed, tear down all networks we already added
-			netName := delegate.Conf.Name
+			netName = delegate.Conf.Name
 			if netName == "" {
 				netName = delegate.ConfList.Name
 			}
@@ -649,11 +631,12 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 		}
 
 		// Remove gateway from routing table if the gateway is not used
-		deletegateway := false
+		deleteV4gateway := false
+		deleteV6gateway := false
 		adddefaultgateway := false
-		if delegate.IsFilterGateway {
-			deletegateway = true
-			logging.Debugf("Marked interface %v for gateway deletion", ifName)
+		if delegate.IsFilterV4Gateway {
+			deleteV4gateway = true
+			logging.Debugf("Marked interface %v for v4 gateway deletion", ifName)
 		} else {
 			// Otherwise, determine if this interface now gets our default route.
 			// According to
@@ -661,24 +644,53 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 			// the list can be empty; if it is, we'll assume the CNI's config for the default gateway holds,
 			// else we'll update the defaultgateway to the one specified.
 			if delegate.GatewayRequest != nil && delegate.GatewayRequest[0] != nil {
-				deletegateway = true
+				deleteV4gateway = true
 				adddefaultgateway = true
 				logging.Debugf("Detected gateway override on interface %v to %v", ifName, delegate.GatewayRequest)
 			}
 		}
 
-		if deletegateway {
-			tmpResult, err = netutils.DeleteDefaultGW(args, ifName, &tmpResult)
-			if err != nil {
-				return nil, cmdErr(k8sArgs, "error deleting default gateway: %v", err)
+		if delegate.IsFilterV6Gateway {
+			deleteV6gateway = true
+			logging.Debugf("Marked interface %v for v6 gateway deletion", ifName)
+		} else {
+			// Otherwise, determine if this interface now gets our default route.
+			// According to
+			// https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ (4.1.2.1.9)
+			// the list can be empty; if it is, we'll assume the CNI's config for the default gateway holds,
+			// else we'll update the defaultgateway to the one specified.
+			if delegate.GatewayRequest != nil && delegate.GatewayRequest[0] != nil {
+				deleteV6gateway = true
+				adddefaultgateway = true
+				logging.Debugf("Detected gateway override on interface %v to %v", ifName, delegate.GatewayRequest)
 			}
 		}
 
-		// Here we'll set the default gateway
+		// Remove namespace from delegate.Name for Add/Del CNI cache
+		nameSlice := strings.Split(delegate.Name, "/")
+		netName = nameSlice[len(nameSlice)-1]
+
+		// Remove gateway if `default-route` network selection is specified
+		if deleteV4gateway || deleteV6gateway {
+			err = netutils.DeleteDefaultGW(args, ifName)
+			if err != nil {
+				return nil, cmdErr(k8sArgs, "error deleting default gateway: %v", err)
+			}
+			err = netutils.DeleteDefaultGWCache(n.CNIDir, rt, netName, ifName, deleteV4gateway, deleteV6gateway)
+			if err != nil {
+				return nil, cmdErr(k8sArgs, "error deleting default gateway in cache: %v", err)
+			}
+		}
+
+		// Here we'll set the default gateway which specified in `default-route` network selection
 		if adddefaultgateway {
-			tmpResult, err = netutils.SetDefaultGW(args, ifName, delegate.GatewayRequest, &tmpResult)
+			err = netutils.SetDefaultGW(args, ifName, delegate.GatewayRequest)
 			if err != nil {
 				return nil, cmdErr(k8sArgs, "error setting default gateway: %v", err)
+			}
+			err = netutils.AddDefaultGWCache(n.CNIDir, rt, netName, ifName, delegate.GatewayRequest)
+			if err != nil {
+				return nil, cmdErr(k8sArgs, "error setting default gateway in cache: %v", err)
 			}
 		}
 
@@ -745,7 +757,7 @@ func CmdCheck(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) 
 		ifName := getIfname(delegate, args.IfName, idx)
 
 		rt, _ := types.CreateCNIRuntimeConf(args, k8sArgs, ifName, in.RuntimeConfig, delegate)
-		err = delegateCheck(exec, ifName, delegate, rt, in)
+		err = delegateCheck(exec, delegate, rt, in)
 		if err != nil {
 			return err
 		}
@@ -769,11 +781,11 @@ func CmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) er
 		// so don't return an error if the device is already removed.
 		// https://github.com/kubernetes/kubernetes/issues/43014#issuecomment-287164444
 		_, ok := err.(ns.NSPathNotExistErr)
+		netnsfound = false
 		if ok {
-			netnsfound = false
 			logging.Debugf("CmdDel: WARNING netns may not exist, netns: %s, err: %s", args.Netns, err)
 		} else {
-			return cmdErr(nil, "failed to open netns %q: %v", netns, err)
+			logging.Debugf("CmdDel: WARNING failed to open netns %q: %v", netns, err)
 		}
 	}
 

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/containernetworking/cni/libcni"
@@ -184,7 +185,7 @@ func mergeCNIRuntimeConfig(runtimeConfig *RuntimeConfig, delegate *DelegateNetCo
 // CreateCNIRuntimeConf create CNI RuntimeConf for a delegate. If delegate configuration
 // exists, merge data with the runtime config.
 func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc *RuntimeConfig, delegate *DelegateNetConf) (*libcni.RuntimeConf, string) {
-	logging.Debugf("LoadCNIRuntimeConf: %v, %v, %s, %v %v", args, k8sArgs, ifName, rc, delegate)
+	logging.Debugf("CreateCNIRuntimeConf: %v, %v, %s, %v %v", args, k8sArgs, ifName, rc, delegate)
 	var cniDeviceInfoFile string
 	var delegateRc *RuntimeConfig
 
@@ -208,7 +209,7 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 		ContainerID: args.ContainerID,
 		NetNS:       args.Netns,
 		IfName:      ifName,
-		// NOTE: Verbose logging depends on this order, so please keep Args order.
+		// NOTE: Verbose logging (pod namespace/pod name)depends on this order, so please keep Args order.
 		Args: [][2]string{
 			{"IgnoreUnknown", string("true")},
 			{"K8S_POD_NAMESPACE", string(k8sArgs.K8S_POD_NAMESPACE)},
@@ -216,6 +217,32 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 			{"K8S_POD_INFRA_CONTAINER_ID", string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID)},
 			{"K8S_POD_UID", string(k8sArgs.K8S_POD_UID)},
 		},
+	}
+
+	// get CNI_ARGS and set it if it does not exist in rt.Args
+	cniArgs := os.Getenv("CNI_ARGS")
+	if cniArgs != "" {
+		for _, arg := range strings.Split(cniArgs, ";") {
+			for _, keyval := range strings.Split(arg, "=") {
+				if len(keyval) != 2 {
+					logging.Errorf("CreateCNIRuntimeConf: CNI_ARGS %s %s %d is not recognized as CNI arg, skipped", arg, keyval, len(keyval))
+					continue
+				}
+
+				envKey := string(keyval[0])
+				envVal := string(keyval[1])
+				isExists := false
+				for _, rtArg := range rt.Args {
+					if rtArg[0] == envKey {
+						isExists = true
+					}
+				}
+				if isExists != false {
+					logging.Debugf("CreateCNIRuntimeConf: add new val: %s", arg)
+					rt.Args = append(rt.Args, [2]string{envKey, envVal})
+				}
+			}
+		}
 	}
 
 	if delegateRc != nil {
@@ -504,15 +531,45 @@ func addCNIArgsInConfList(inBytes []byte, cniArgs *map[string]interface{}) ([]by
 	return configBytes, nil
 }
 
-// CheckGatewayConfig check gatewayRequest and mark IsFilterGateway flag if
+// CheckGatewayConfig check gatewayRequest and mark IsFilter{V4,V6}Gateway flag if
 // gw filtering is required
-func CheckGatewayConfig(delegates []*DelegateNetConf) {
-	// Check the Gateway
-	for i, delegate := range delegates {
-		if delegate.GatewayRequest == nil {
-			delegates[i].IsFilterGateway = true
+func CheckGatewayConfig(delegates []*DelegateNetConf) error {
+
+	v4Gateways := 0
+	v6Gateways := 0
+
+	// Check the gateway
+	for _, delegate := range delegates {
+		for _, gw := range delegate.GatewayRequest {
+			if gw.To4() != nil {
+				v4Gateways++
+			} else {
+				v6Gateways++
+			}
 		}
 	}
+
+	if v4Gateways > 1 || v6Gateways > 1 {
+		return fmt.Errorf("multus does not support ECMP for default-route")
+	}
+
+	// set filter flag for each delegate
+	for i, delegate := range delegates {
+		// no GatewayRequest
+		if delegate.GatewayRequest == nil {
+			delegates[i].IsFilterV4Gateway = true
+			delegates[i].IsFilterV6Gateway = true
+		} else {
+			for _, gw := range delegate.GatewayRequest {
+				if gw.To4() != nil {
+					delegates[i].IsFilterV6Gateway = true
+				} else {
+					delegates[i].IsFilterV4Gateway = true
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // CheckSystemNamespaces checks whether given namespace is in systemNamespaces or not.

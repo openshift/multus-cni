@@ -80,7 +80,7 @@ func main() {
 	additionalBinDir := flag.String(multusAdditionalBinDirVarName, defaultMultusAdditionalBinDir, "Additional binary directory to specify in the configurations. Used only with --multus-conf-file=auto.")
 	readinessIndicator := flag.String(multusReadinessIndicatorFile, defaultMultusReadinessIndicatorFile, "Which file should be used as the readiness indicator. Used only with --multus-conf-file=auto.")
 	multusKubeconfig := flag.String(multusKubeconfigPath, defaultMultusKubeconfigPath, "The path to the kubeconfig")
-	overrideNetworkName := flag.Bool("override-network-name", false, "Used when ")
+	overrideNetworkName := flag.Bool("override-network-name", false, "Used when we need overrides the name of the multus configuration with the name of the delegated primary CNI")
 	flag.BoolVar(&versionOpt, "version", false, "Show application version")
 	flag.BoolVar(&versionOpt, "v", false, "Show application version")
 	flag.Parse()
@@ -139,10 +139,14 @@ func main() {
 			configurationOptions = append(
 				configurationOptions, config.WithReadinessFileIndicator(*readinessIndicator))
 		}
-		multusConfig := config.NewMultusConfig(multusPluginName, *cniVersion, *multusKubeconfig, configurationOptions...)
+
+		multusConfig, err := config.NewMultusConfig(multusPluginName, *cniVersion, *multusKubeconfig, configurationOptions...)
+		if err != nil {
+			_ = logging.Errorf("Failed to create multus config: %v", err)
+			os.Exit(3)
+		}
 
 		var configManager *config.Manager
-		var err error
 		if *multusMasterCni == "" {
 			configManager, err = config.NewManager(*multusConfig, *multusAutoconfigDir)
 		} else {
