@@ -79,6 +79,8 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 			if err != nil {
 				return nil, logging.Errorf("LoadDelegateNetConf: failed to add deviceID in NetConfList bytes: %v", err)
 			}
+			delegateConf.ResourceName = resourceName
+			delegateConf.DeviceID = deviceID
 		}
 		if net != nil && net.CNIArgs != nil {
 			bytes, err = addCNIArgsInConfList(bytes, net.CNIArgs)
@@ -204,8 +206,6 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 	}
 
 	// In part, adapted from K8s pkg/kubelet/dockershim/network/cni/cni.go#buildCNIRuntimeConf
-	// Todo
-	// ingress, egress and bandwidth capability features as same as kubelet.
 	rt := &libcni.RuntimeConf{
 		ContainerID: args.ContainerID,
 		NetNS:       args.Netns,
@@ -216,6 +216,7 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 			{"K8S_POD_NAMESPACE", string(k8sArgs.K8S_POD_NAMESPACE)},
 			{"K8S_POD_NAME", string(k8sArgs.K8S_POD_NAME)},
 			{"K8S_POD_INFRA_CONTAINER_ID", string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID)},
+			{"K8S_POD_UID", string(k8sArgs.K8S_POD_UID)},
 		},
 	}
 
