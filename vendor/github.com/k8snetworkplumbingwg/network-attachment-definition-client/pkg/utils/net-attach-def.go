@@ -18,11 +18,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
 	cnitypes "github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/types/current"
+	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -72,7 +73,7 @@ func SetNetworkStatus(client kubernetes.Interface, pod *corev1.Pod, statuses []v
 	return nil
 }
 
-func setPodNetworkStatus(client kubernetes.Interface, pod *corev1.Pod, networkstatus string) (error) {
+func setPodNetworkStatus(client kubernetes.Interface, pod *corev1.Pod, networkstatus string) error {
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = make(map[string]string)
 	}
@@ -92,7 +93,6 @@ func setPodNetworkStatus(client kubernetes.Interface, pod *corev1.Pod, networkst
 			pod.Annotations = make(map[string]string)
 		}
 		pod.Annotations[v1.NetworkStatusAnnot] = networkstatus
-		pod.Annotations[v1.OldNetworkStatusAnnot] = networkstatus
 		_, err = coreClient.Pods(namespace).UpdateStatus(context.TODO(), pod, metav1.UpdateOptions{})
 		return err
 	})
@@ -129,9 +129,9 @@ func CreateNetworkStatus(r cnitypes.Result, networkName string, defaultNetwork b
 	netStatus.Default = defaultNetwork
 
 	// Convert whatever the IPAM result was into the current Result type
-	result, err := current.NewResultFromResult(r)
+	result, err := cni100.NewResultFromResult(r)
 	if err != nil {
-		return netStatus, fmt.Errorf("error convert the type.Result to current.Result: %v", err)
+		return netStatus, fmt.Errorf("error convert the type.Result to cni100.Result: %v", err)
 	}
 
 	for _, ifs := range result.Interfaces {
@@ -146,6 +146,12 @@ func CreateNetworkStatus(r cnitypes.Result, networkName string, defaultNetwork b
 		netStatus.IPs = append(netStatus.IPs, ipconfig.Address.IP.String())
 	}
 
+	for _, route := range result.Routes {
+		if isDefaultRoute(route) {
+			netStatus.Gateway = append(netStatus.Gateway, route.GW.String())
+		}
+	}
+
 	v1dns := convertDNS(result.DNS)
 	netStatus.DNS = *v1dns
 
@@ -154,6 +160,12 @@ func CreateNetworkStatus(r cnitypes.Result, networkName string, defaultNetwork b
 	}
 
 	return netStatus, nil
+}
+
+func isDefaultRoute(route *cnitypes.Route) bool {
+	return route.Dst.IP == nil && route.Dst.Mask == nil ||
+		route.Dst.IP.Equal(net.IPv4zero) ||
+		route.Dst.IP.Equal(net.IPv6zero)
 }
 
 // ParsePodNetworkAnnotation parses Pod annotation for net-attach-def and get NetworkSelectionElement

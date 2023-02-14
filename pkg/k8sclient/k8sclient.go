@@ -1,4 +1,5 @@
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -92,12 +93,21 @@ func (c *ClientInfo) Eventf(object runtime.Object, eventtype, reason, messageFmt
 	}
 }
 
-func (e *NoK8sNetworkError) Error() string { return string(e.message) }
+func (e *NoK8sNetworkError) Error() string { return e.message }
 
 // SetNetworkStatus sets network status into Pod annotation
 func SetNetworkStatus(client *ClientInfo, k8sArgs *types.K8sArgs, netStatus []nettypes.NetworkStatus, conf *types.NetConf) error {
+	podName := string(k8sArgs.K8S_POD_NAME)
+	podNamespace := string(k8sArgs.K8S_POD_NAMESPACE)
+	podUID := string(k8sArgs.K8S_POD_UID)
+
+	return SetPodNetworkStatusAnnotation(client, podName, podNamespace, podUID, netStatus, conf)
+}
+
+// SetPodNetworkStatusAnnotation sets network status into Pod annotation
+func SetPodNetworkStatusAnnotation(client *ClientInfo, podName string, podNamespace string, podUID string, netStatus []nettypes.NetworkStatus, conf *types.NetConf) error {
 	var err error
-	logging.Debugf("SetNetworkStatus: %v, %v, %v, %v", client, k8sArgs, netStatus, conf)
+	logging.Debugf("SetPodNetworkStatusAnnotation: %v, %v, %v", client, netStatus, conf)
 
 	client, err = GetK8sClient(conf.Kubeconfig, client)
 	if err != nil {
@@ -108,16 +118,13 @@ func SetNetworkStatus(client *ClientInfo, k8sArgs *types.K8sArgs, netStatus []ne
 			// No available kube client and no delegates, we can't do anything
 			return logging.Errorf("SetNetworkStatus: must have either Kubernetes config or delegates")
 		}
-		logging.Debugf("SetNetworkStatus: kube client info is not defined, skip network status setup")
+		logging.Debugf("SetPodNetworkStatusAnnotation: kube client info is not defined, skip network status setup")
 		return nil
 	}
 
-	podName := string(k8sArgs.K8S_POD_NAME)
-	podNamespace := string(k8sArgs.K8S_POD_NAMESPACE)
-	podUID := string(k8sArgs.K8S_POD_UID)
 	pod, err := client.GetPod(podNamespace, podName)
 	if err != nil {
-		return logging.Errorf("SetNetworkStatus: failed to query the pod %v in out of cluster comm: %v", podName, err)
+		return logging.Errorf("SetPodNetworkStatusAnnotation: failed to query the pod %v in out of cluster comm: %v", podName, err)
 	}
 
 	if podUID != "" && string(pod.UID) != podUID && !IsStaticPod(pod) {
@@ -127,7 +134,7 @@ func SetNetworkStatus(client *ClientInfo, k8sArgs *types.K8sArgs, netStatus []ne
 	if netStatus != nil {
 		err = netutils.SetNetworkStatus(client.Client, pod, netStatus)
 		if err != nil {
-			return logging.Errorf("SetNetworkStatus: failed to update the pod %v in out of cluster comm: %v", podName, err)
+			return logging.Errorf("SetPodNetworkStatusAnnotation: failed to update the pod %v in out of cluster comm: %v", podName, err)
 		}
 	}
 
@@ -183,7 +190,7 @@ func parsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*types.N
 		return nil, logging.Errorf("parsePodNetworkAnnotation: pod annotation does not have \"network\" as key")
 	}
 
-	if strings.IndexAny(podNetworks, "[{\"") >= 0 {
+	if strings.ContainsAny(podNetworks, "[{\"") {
 		if err := json.Unmarshal([]byte(podNetworks), &networks); err != nil {
 			return nil, logging.Errorf("parsePodNetworkAnnotation: failed to parse pod Network Attachment Selection Annotation JSON format: %v", err)
 		}
@@ -365,7 +372,7 @@ func TryLoadPodDelegates(pod *v1.Pod, conf *types.NetConf, clientInfo *ClientInf
 			}
 		}
 
-		if isGatewayConfigured == true {
+		if isGatewayConfigured {
 			err = types.CheckGatewayConfig(conf.Delegates)
 			if err != nil {
 				return 0, nil, err
@@ -379,6 +386,18 @@ func TryLoadPodDelegates(pod *v1.Pod, conf *types.NetConf, clientInfo *ClientInf
 		return 0, clientInfo, nil
 	}
 	return 0, clientInfo, err
+}
+
+// InClusterK8sClient returns the `k8s.ClientInfo` struct to use to connect to
+// the k8s API.
+func InClusterK8sClient() (*ClientInfo, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	logging.Debugf("InClusterK8sClient: in cluster config: %+v", config)
+	return NewClientInfo(config)
 }
 
 // GetK8sClient gets client info from kubeconfig
@@ -417,7 +436,12 @@ func GetK8sClient(kubeconfig string, kubeClient *ClientInfo) (*ClientInfo, error
 	// Set the config timeout to one minute.
 	config.Timeout = time.Minute
 
-	// creates the clientset
+	return NewClientInfo(config)
+}
+
+// NewClientInfo returns a `ClientInfo` from a configuration created from an
+// existing kubeconfig file.
+func NewClientInfo(config *rest.Config) (*ClientInfo, error) {
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, err
@@ -432,7 +456,6 @@ func GetK8sClient(kubeconfig string, kubeClient *ClientInfo) (*ClientInfo, error
 	broadcaster.StartLogging(klog.Infof)
 	broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: client.CoreV1().Events("")})
 	recorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "multus"})
-
 	return &ClientInfo{
 		Client:           client,
 		NetClient:        netclient,
@@ -500,32 +523,40 @@ func isValidNamespaceReference(targetns string, allowednamespaces []string) bool
 	return false
 }
 
+// getNetDelegate loads delegate network for clusterNetwork/defaultNetworks
 func getNetDelegate(client *ClientInfo, pod *v1.Pod, netname, confdir, namespace string, resourceMap map[string]*types.ResourceInfo) (*types.DelegateNetConf, map[string]*types.ResourceInfo, error) {
 	logging.Debugf("getNetDelegate: %v, %v, %v, %s", client, netname, confdir, namespace)
-	// option1) search CRD object for the network
-	net := &types.NetworkSelectionElement{
-		Name:      netname,
-		Namespace: namespace,
-	}
-	delegate, resourceMap, err := getKubernetesDelegate(client, net, confdir, pod, resourceMap)
-	if err == nil {
-		return delegate, resourceMap, nil
-	}
-
-	// option2) search CNI json config file
 	var configBytes []byte
-	configBytes, err = netutils.GetCNIConfigFromFile(netname, confdir)
-	if err == nil {
-		delegate, err := types.LoadDelegateNetConf(configBytes, nil, "", "")
+	isNetnamePath := strings.Contains(netname, "/")
+
+	// if netname is not directory or file, it must be net-attach-def name or CNI config name
+	if !isNetnamePath {
+		// option1) search CRD object for the network
+		net := &types.NetworkSelectionElement{
+			Name:      netname,
+			Namespace: namespace,
+		}
+		delegate, resourceMap, err := getKubernetesDelegate(client, net, confdir, pod, resourceMap)
+		if err == nil {
+			return delegate, resourceMap, nil
+		}
+
+		// option2) search CNI json config file, which has <netname> as CNI name, from confDir
+		configBytes, err = netutils.GetCNIConfigFromFile(netname, confdir)
+		if err == nil {
+			delegate, err := types.LoadDelegateNetConf(configBytes, nil, "", "")
+			if err != nil {
+				return nil, resourceMap, err
+			}
+			return delegate, resourceMap, nil
+		}
+	} else {
+		fInfo, err := os.Stat(netname)
 		if err != nil {
 			return nil, resourceMap, err
 		}
-		return delegate, resourceMap, nil
-	}
 
-	// option3) search directory
-	fInfo, err := os.Stat(netname)
-	if err == nil {
+		// option3) search directory
 		if fInfo.IsDir() {
 			files, err := libcni.ConfFiles(netname, []string{".conf", ".conflist"})
 			if err != nil {
@@ -543,6 +574,29 @@ func getNetDelegate(client *ClientInfo, pod *v1.Pod, netname, confdir, namespace
 				}
 				return nil, resourceMap, err
 			}
+		} else {
+			// option4) if file path (absolute), then load it directly
+			if strings.HasSuffix(netname, ".conflist") {
+				confList, err := libcni.ConfListFromFile(netname)
+				if err != nil {
+					return nil, resourceMap, logging.Errorf("error loading CNI conflist file %s: %v", netname, err)
+				}
+				configBytes = confList.Bytes
+			} else {
+				conf, err := libcni.ConfFromFile(netname)
+				if err != nil {
+					return nil, resourceMap, logging.Errorf("error loading CNI config file %s: %v", netname, err)
+				}
+				if conf.Network.Type == "" {
+					return nil, resourceMap, logging.Errorf("error loading CNI config file %s: no 'type'; perhaps this is a .conflist?", netname)
+				}
+				configBytes = conf.Bytes
+			}
+			delegate, err := types.LoadDelegateNetConf(configBytes, nil, "", "")
+			if err != nil {
+				return nil, resourceMap, err
+			}
+			return delegate, resourceMap, nil
 		}
 	}
 	return nil, resourceMap, logging.Errorf("getNetDelegate: cannot find network: %v", netname)
@@ -626,7 +680,7 @@ const ConfigSourceAnnotationKey = "kubernetes.io/config.source"
 // IsStaticPod returns true if the pod is static pod.
 func IsStaticPod(pod *v1.Pod) bool {
 	if pod.Annotations != nil {
-		if source, ok := pod.Annotations[ConfigSourceAnnotationKey]; ok == true {
+		if source, ok := pod.Annotations[ConfigSourceAnnotationKey]; ok {
 			return source != "api"
 		}
 	}

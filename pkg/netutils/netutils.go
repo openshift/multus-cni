@@ -1,4 +1,5 @@
-// Copyright (c) 2019 Multus Authors
+// Copyright (c) 2019 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,27 +12,25 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package netutils
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
+	"os"
 	"path/filepath"
 
 	"github.com/containernetworking/cni/libcni"
-	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 )
 
 // DeleteDefaultGW removes the default gateway from marked interfaces.
-func DeleteDefaultGW(args *skel.CmdArgs, ifName string) error {
-	netns, err := ns.GetNS(args.Netns)
+func DeleteDefaultGW(netnsPath string, ifName string) error {
+	netns, err := ns.GetNS(netnsPath)
 	if err != nil {
 		return logging.Errorf("DeleteDefaultGW: Error getting namespace %v", err)
 	}
@@ -52,9 +51,9 @@ func DeleteDefaultGW(args *skel.CmdArgs, ifName string) error {
 }
 
 // SetDefaultGW adds a default gateway on a specific interface
-func SetDefaultGW(args *skel.CmdArgs, ifName string, gateways []net.IP) error {
+func SetDefaultGW(netnsPath string, ifName string, gateways []net.IP) error {
 	// This ensures we're acting within the net namespace for the pod.
-	netns, err := ns.GetNS(args.Netns)
+	netns, err := ns.GetNS(netnsPath)
 	if err != nil {
 		return logging.Errorf("SetDefaultGW: Error getting namespace %v", err)
 	}
@@ -96,7 +95,7 @@ func SetDefaultGW(args *skel.CmdArgs, ifName string, gateways []net.IP) error {
 func DeleteDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, ifName string, ipv4, ipv6 bool) error {
 	cacheFile := filepath.Join(cacheDir, "results", fmt.Sprintf("%s-%s-%s", netName, rt.ContainerID, rt.IfName))
 
-	cache, err := ioutil.ReadFile(cacheFile)
+	cache, err := os.ReadFile(cacheFile)
 	if err != nil {
 		return err
 	}
@@ -107,7 +106,7 @@ func DeleteDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName strin
 	}
 
 	logging.Debugf("DeleteDefaultGWCache: update cache to delete GW: %s", string(newCache))
-	return ioutil.WriteFile(cacheFile, newCache, 0600)
+	return os.WriteFile(cacheFile, newCache, 0600)
 }
 
 func deleteDefaultGWCacheBytes(cacheFile []byte, ipv4, ipv6 bool) ([]byte, error) {
@@ -268,7 +267,7 @@ func deleteDefaultGWResult020(result map[string]interface{}, ipv4, ipv6 bool) (m
 func AddDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, ifName string, gw []net.IP) error {
 	cacheFile := filepath.Join(cacheDir, "results", fmt.Sprintf("%s-%s-%s", netName, rt.ContainerID, rt.IfName))
 
-	cache, err := ioutil.ReadFile(cacheFile)
+	cache, err := os.ReadFile(cacheFile)
 	if err != nil {
 		return err
 	}
@@ -279,7 +278,7 @@ func AddDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, 
 	}
 
 	logging.Debugf("AddDefaultGWCache: update cache to add GW: %s", string(newCache))
-	return ioutil.WriteFile(cacheFile, newCache, 0600)
+	return os.WriteFile(cacheFile, newCache, 0600)
 }
 
 func addDefaultGWCacheBytes(cacheFile []byte, gw []net.IP) ([]byte, error) {

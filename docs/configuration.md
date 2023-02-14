@@ -14,6 +14,12 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
     "binDir": "/opt/cni/bin",
     "logFile": "/var/log/multus.log",
     "logLevel": "debug",
+    "logOptions": {
+        "maxAge": 5,
+        "maxSize": 100,
+        "maxBackups": 5,
+        "compress": true
+    },
     "capabilities": {
         "portMappings": true
     },    
@@ -31,7 +37,8 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
     }, {
         "type": "macvlan",
         ... (snip)
-    }]
+    }],
+    allowTryDeleteOnErr: false
 }
 ```
 
@@ -44,17 +51,19 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
 * `logToStderr` (bool, optional): Enable or disable logging to `STDERR`. Defaults to true.
 * `logFile` (string, optional): file path for log file. multus puts log in given file
 * `logLevel` (string, optional): logging level ("debug", "error", "verbose", or "panic")
+* `logOptions` (object, optional): logging option, More detailed log configuration
 * `namespaceIsolation` (boolean, optional): Enables a security feature where pods are only allowed to access `NetworkAttachmentDefinitions` in the namespace where the pod resides. Defaults to false.
 * `capabilities` ({}list, optional): [capabilities](https://github.com/containernetworking/cni/blob/master/CONVENTIONS.md#dynamic-plugin-specific-fields-capabilities--runtime-configuration) supported by at least one of the delegates. (NOTE: Multus only supports portMappings/Bandwidth capability for cluster networks).
 * `readinessindicatorfile`: The path to a file whose existence denotes that the default network is ready
 
 User should chose following parameters combination (`clusterNetwork`+`defaultNetworks` or `delegates`):
 
-* `clusterNetwork` (string, required): default CNI network for pods, used in kubernetes cluster (Pod IP and so on): name of network-attachment-definition, CNI json file name (without extension, .conf/.conflist) or directory for CNI config file
-* `defaultNetworks` ([]string, required): default CNI network attachment: name of network-attachment-definition, CNI json file name (without extension, .conf/.conflist) or directory for CNI config file
+* `clusterNetwork` (string, required): default CNI network for pods, used in kubernetes cluster (Pod IP and so on): name of network-attachment-definition, CNI json file name (without extension, .conf/.conflist), directory for CNI config file or absolute file path for CNI config file
+* `defaultNetworks` ([]string, required): default CNI network attachment: name of network-attachment-definition, CNI json file name (without extension, .conf/.conflist), directory for CNI config file or absolute file path for CNI config file
 * `systemNamespaces` ([]string, optional): list of namespaces for Kubernetes system (namespaces listed here will not have `defaultNetworks` added)
 * `multusNamespace` (string, optional): namespace for `clusterNetwork`/`defaultNetworks`
 * `delegates` ([]map,required): number of delegate details in the Multus
+* `retryDeleteOnError` (bool, optional): Enable or disable delegate DEL message to next when some missing error. Defaults to false.
 
 ### Network selection flow of clusterNetwork/defaultNetworks
 
@@ -63,6 +72,7 @@ Multus will find network for clusterNetwork/defaultNetworks as following sequenc
 1. CRD object for given network name, in 'kube-system' namespace
 1. CNI json config file in `confDir`. Given name should be without extension, like .conf/.conflist. (e.g. "test" for "test.conf"). The given name for `clusterNetwork` should match the value for `name` key in the config file (e.g. `"name": "test"` in "test.conf" when `"clusterNetwork": "test"`)
 1. Directory for CNI json config file. Multus will find alphabetically first file for the network
+1. File path for CNI json confile file.
 1. Multus failed to find network. Multus raise error message
 
 ## Miscellaneous config
@@ -103,7 +113,7 @@ Optionally, you may have Multus log to a file on the filesystem. This file will 
 For example in your CNI configuration, you may set:
 
 ```
-    "LogFile": "/var/log/multus.log",
+    "logFile": "/var/log/multus.log",
 ```
 
 #### Logging Level
@@ -120,7 +130,27 @@ The available logging level values, in decreasing order of verbosity are:
 You may configure the logging level by using the `LogLevel` option in your CNI configuration. For example:
 
 ```
-    "LogLevel": "debug",
+    "logLevel": "debug",
+```
+
+#### Logging Options
+
+If you want a more detailed configuration of the logging, This includes the following parameters:
+
+* `maxAge` the maximum number of days to retain old log files in their filename
+* `maxSize` the maximum size in megabytes of the log file before it gets rotated
+* `maxBackups` the maximum number of days to retain old log files in their filename
+* `compress` compress determines if the rotated log files should be compressed using gzip
+
+For example in your CNI configuration, you may set:
+
+```
+    "logOptions": {
+        "maxAge": 5,
+        "maxSize": 100,
+        "maxBackups": 5,
+        "compress": true
+    }
 ```
 
 ### Namespace Isolation
