@@ -21,7 +21,7 @@ WORKDIR /usr/src/multus-cni
 ENV GO111MODULE=off
 RUN ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin 
-RUN ls -lathr /usr/src/multus-cni/bin/multus
+RUN ls -lathr /usr/src/multus-cni/bin
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/4.13:base
@@ -29,9 +29,9 @@ RUN mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/bin && \
        mkdir -p /usr/src/multus-cni/rhel7/bin && \
        mkdir -p /usr/src/multus-cni/rhel8/bin
-COPY --from=rhel7 /usr/src/multus-cni/bin/multus /usr/src/multus-cni/rhel7/bin
-COPY --from=rhel8 /usr/src/multus-cni/bin/multus /usr/src/multus-cni/bin
-COPY --from=rhel8 /usr/src/multus-cni/bin/multus /usr/src/multus-cni/rhel8/bin
+COPY --from=rhel7 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel7/bin
+COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
+COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel8/bin
 ADD ./images/entrypoint.sh /
 
 LABEL io.k8s.display-name="Multus CNI" \
