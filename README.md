@@ -1,4 +1,4 @@
-# Multus-CNI
+# Multus-CI
 
 ![multus-cni Logo](https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/docs/images/Multus.png)
 
