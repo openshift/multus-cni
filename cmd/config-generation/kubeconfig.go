@@ -13,6 +13,7 @@
 // limitations under the License.
 //
 
+// this generates kubeconfig file for multus based on service account
 package main
 
 import (
@@ -123,7 +124,7 @@ contexts:
 current-context: multus-context
 `
 	kubeconfig := fmt.Sprintf(kubeConfigTemplate, protocol, k8sServiceIP, k8sServicePort, tlsConfig, serviceAccountToken)
-	logInfo("Generated KubeConfig: \n%s", kubeconfig)
+	logInfo("Generated KubeConfig saved to %s: \n%s", outputPath, kubeconfig)
 	return ioutil.WriteFile(outputPath, []byte(kubeconfig), userRWPermission)
 }
 
