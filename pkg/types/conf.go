@@ -1,4 +1,5 @@
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,7 +12,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package types
 
@@ -24,7 +24,7 @@ import (
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
-	"github.com/containernetworking/cni/pkg/types/current"
+	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
@@ -37,6 +37,13 @@ const (
 	defaultReadinessIndicatorFile = ""
 	defaultMultusNamespace        = "kube-system"
 	defaultNonIsolatedNamespace   = "default"
+)
+
+// const block for multus-daemon configs
+const (
+	// DefaultMultusDaemonConfigFile is the default path of the config file
+	DefaultMultusDaemonConfigFile = "/etc/cni/net.d/multus.d/daemon-config.json"
+	defaultMultusRunDir           = "/run/multus/"
 )
 
 // LoadDelegateNetConfList reads DelegateNetConf from bytes
@@ -60,9 +67,9 @@ func LoadDelegateNetConfList(bytes []byte, delegateConf *DelegateNetConf) error 
 }
 
 // LoadDelegateNetConf converts raw CNI JSON into a DelegateNetConf structure
-func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID string, resourceName string) (*DelegateNetConf, error) {
+func LoadDelegateNetConf(bytes []byte, netElement *NetworkSelectionElement, deviceID string, resourceName string) (*DelegateNetConf, error) {
 	var err error
-	logging.Debugf("LoadDelegateNetConf: %s, %v, %s", string(bytes), net, deviceID)
+	logging.Debugf("LoadDelegateNetConf: %s, %v, %s", string(bytes), netElement, deviceID)
 
 	delegateConf := &DelegateNetConf{}
 	if err := json.Unmarshal(bytes, &delegateConf.Conf); err != nil {
@@ -83,8 +90,8 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 			delegateConf.ResourceName = resourceName
 			delegateConf.DeviceID = deviceID
 		}
-		if net != nil && net.CNIArgs != nil {
-			bytes, err = addCNIArgsInConfList(bytes, net.CNIArgs)
+		if netElement != nil && netElement.CNIArgs != nil {
+			bytes, err = addCNIArgsInConfList(bytes, netElement.CNIArgs)
 			if err != nil {
 				return nil, logging.Errorf("LoadDelegateNetConf(): failed to add cni-args in NetConfList bytes: %v", err)
 			}
@@ -99,45 +106,51 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 			delegateConf.ResourceName = resourceName
 			delegateConf.DeviceID = deviceID
 		}
-		if net != nil && net.CNIArgs != nil {
-			bytes, err = addCNIArgsInConfig(bytes, net.CNIArgs)
+		if netElement != nil && netElement.CNIArgs != nil {
+			bytes, err = addCNIArgsInConfig(bytes, netElement.CNIArgs)
 			if err != nil {
 				return nil, logging.Errorf("LoadDelegateNetConf(): failed to add cni-args in NetConfList bytes: %v", err)
 			}
 		}
 	}
 
-	if net != nil {
-		if net.Name != "" {
+	if netElement != nil {
+		if netElement.Name != "" {
 			// Overwrite CNI config name with net-attach-def name
-			delegateConf.Name = fmt.Sprintf("%s/%s", net.Namespace, net.Name)
+			delegateConf.Name = fmt.Sprintf("%s/%s", netElement.Namespace, netElement.Name)
 		}
-		if net.InterfaceRequest != "" {
-			delegateConf.IfnameRequest = net.InterfaceRequest
+		if netElement.InterfaceRequest != "" {
+			delegateConf.IfnameRequest = netElement.InterfaceRequest
 		}
-		if net.MacRequest != "" {
-			delegateConf.MacRequest = net.MacRequest
+		if netElement.MacRequest != "" {
+			delegateConf.MacRequest = netElement.MacRequest
 		}
-		if net.IPRequest != nil {
-			delegateConf.IPRequest = net.IPRequest
+		if netElement.IPRequest != nil {
+			delegateConf.IPRequest = netElement.IPRequest
 		}
-		if net.BandwidthRequest != nil {
-			delegateConf.BandwidthRequest = net.BandwidthRequest
+		if netElement.BandwidthRequest != nil {
+			delegateConf.BandwidthRequest = netElement.BandwidthRequest
 		}
-		if net.PortMappingsRequest != nil {
-			delegateConf.PortMappingsRequest = net.PortMappingsRequest
+		if netElement.PortMappingsRequest != nil {
+			delegateConf.PortMappingsRequest = netElement.PortMappingsRequest
 		}
-		if net.GatewayRequest != nil {
-			delegateConf.GatewayRequest = append(delegateConf.GatewayRequest, net.GatewayRequest...)
+		if netElement.GatewayRequest != nil {
+			var list []net.IP
+			if delegateConf.GatewayRequest != nil {
+				list = append(*delegateConf.GatewayRequest, *netElement.GatewayRequest...)
+			} else {
+				list = *netElement.GatewayRequest
+			}
+			delegateConf.GatewayRequest = &list
 		}
-		if net.InfinibandGUIDRequest != "" {
-			delegateConf.InfinibandGUIDRequest = net.InfinibandGUIDRequest
+		if netElement.InfinibandGUIDRequest != "" {
+			delegateConf.InfinibandGUIDRequest = netElement.InfinibandGUIDRequest
 		}
-		if net.DeviceID != "" {
+		if netElement.DeviceID != "" {
 			if deviceID != "" {
 				logging.Debugf("Warning: Both RuntimeConfig and ResourceMap provide deviceID. Ignoring RuntimeConfig")
 			} else {
-				delegateConf.DeviceID = net.DeviceID
+				delegateConf.DeviceID = netElement.DeviceID
 			}
 		}
 	}
@@ -187,43 +200,27 @@ func mergeCNIRuntimeConfig(runtimeConfig *RuntimeConfig, delegate *DelegateNetCo
 // CreateCNIRuntimeConf create CNI RuntimeConf for a delegate. If delegate configuration
 // exists, merge data with the runtime config.
 func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc *RuntimeConfig, delegate *DelegateNetConf) (*libcni.RuntimeConf, string) {
-	logging.Debugf("CreateCNIRuntimeConf: %v, %v, %s, %v %v", args, k8sArgs, ifName, rc, delegate)
-	var cniDeviceInfoFile string
-	var delegateRc *RuntimeConfig
+	podName := string(k8sArgs.K8S_POD_NAME)
+	podNamespace := string(k8sArgs.K8S_POD_NAMESPACE)
+	podUID := string(k8sArgs.K8S_POD_UID)
+	sandboxID := string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID)
+	return newCNIRuntimeConf(args.ContainerID, sandboxID, podName, podNamespace, podUID, args.Netns, ifName, rc, delegate)
+}
 
-	if delegate != nil {
-		delegateRc = mergeCNIRuntimeConfig(rc, delegate)
-		if delegateRc.DeviceID != "" {
-			if delegateRc.CNIDeviceInfoFile != "" {
-				logging.Debugf("Warning: Existing value of CNIDeviceInfoFile will be overwritten %s", delegateRc.CNIDeviceInfoFile)
-			}
-			autoDeviceInfo := fmt.Sprintf("%s-%s_%s", delegate.Name, args.ContainerID, ifName)
-			delegateRc.CNIDeviceInfoFile = nadutils.GetCNIDeviceInfoPath(autoDeviceInfo)
-			cniDeviceInfoFile = delegateRc.CNIDeviceInfoFile
-			logging.Debugf("Adding auto-generated CNIDeviceInfoFile: %s", delegateRc.CNIDeviceInfoFile)
-		}
-	} else {
-		delegateRc = rc
-	}
+// newCNIRuntimeConf creates the CNI `RuntimeConf` for the given ADD / DEL request.
+func newCNIRuntimeConf(containerID, sandboxID, podName, podNamespace, podUID, netNs, ifName string, rc *RuntimeConfig, delegate *DelegateNetConf) (*libcni.RuntimeConf, string) {
+	logging.Debugf("LoadCNIRuntimeConf: %s, %v %v", ifName, rc, delegate)
 
+	delegateRc := delegateRuntimeConfig(containerID, delegate, rc, ifName)
 	// In part, adapted from K8s pkg/kubelet/dockershim/network/cni/cni.go#buildCNIRuntimeConf
-	rt := &libcni.RuntimeConf{
-		ContainerID: args.ContainerID,
-		NetNS:       args.Netns,
-		IfName:      ifName,
-		// NOTE: Verbose logging (pod namespace/pod name)depends on this order, so please keep Args order.
-		Args: [][2]string{
-			{"IgnoreUnknown", string("true")},
-			{"K8S_POD_NAMESPACE", string(k8sArgs.K8S_POD_NAMESPACE)},
-			{"K8S_POD_NAME", string(k8sArgs.K8S_POD_NAME)},
-			{"K8S_POD_INFRA_CONTAINER_ID", string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID)},
-			{"K8S_POD_UID", string(k8sArgs.K8S_POD_UID)},
-		},
-	}
+	rt := createRuntimeConf(netNs, podNamespace, podName, containerID, sandboxID, podUID, ifName)
+
+	var cniDeviceInfoFile string
 
 	// Populate rt.Args with CNI_ARGS if the rt.Args value is not set
 	cniArgs := os.Getenv("CNI_ARGS")
 	if cniArgs != "" {
+		logging.Debugf("ARGS: %s", cniArgs)
 		for _, arg := range strings.Split(cniArgs, ";") {
 			// SplitN to handle = within values, like BLAH=foo=bar
 			keyval := strings.SplitN(arg, "=", 2)
@@ -252,6 +249,7 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 	}
 
 	if delegateRc != nil {
+		cniDeviceInfoFile = delegateRc.CNIDeviceInfoFile
 		capabilityArgs := map[string]interface{}{}
 		if len(delegateRc.PortMaps) != 0 {
 			capabilityArgs["portMappings"] = delegateRc.PortMaps
@@ -279,8 +277,45 @@ func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, r
 	return rt, cniDeviceInfoFile
 }
 
+// createRuntimeConf creates the CNI `RuntimeConf` for the given ADD / DEL request.
+func createRuntimeConf(netNs, podNamespace, podName, containerID, sandboxID, podUID, ifName string) *libcni.RuntimeConf {
+	return &libcni.RuntimeConf{
+		ContainerID: containerID,
+		NetNS:       netNs,
+		IfName:      ifName,
+		// NOTE: Verbose logging depends on this order, so please keep Args order.
+		Args: [][2]string{
+			{"IgnoreUnknown", "true"},
+			{"K8S_POD_NAMESPACE", podNamespace},
+			{"K8S_POD_NAME", podName},
+			{"K8S_POD_INFRA_CONTAINER_ID", sandboxID},
+			{"K8S_POD_UID", podUID},
+		},
+	}
+}
+
+// delegateRuntimeConfig creates the CNI `RuntimeConf` for the given ADD / DEL request.
+func delegateRuntimeConfig(containerID string, delegate *DelegateNetConf, rc *RuntimeConfig, ifName string) *RuntimeConfig {
+	var delegateRc *RuntimeConfig
+
+	if delegate != nil {
+		delegateRc = mergeCNIRuntimeConfig(rc, delegate)
+		if delegateRc.DeviceID != "" {
+			if delegateRc.CNIDeviceInfoFile != "" {
+				logging.Debugf("Warning: Existing value of CNIDeviceInfoFile will be overwritten %s", delegateRc.CNIDeviceInfoFile)
+			}
+			autoDeviceInfo := fmt.Sprintf("%s-%s_%s", delegate.Name, containerID, ifName)
+			delegateRc.CNIDeviceInfoFile = nadutils.GetCNIDeviceInfoPath(autoDeviceInfo)
+			logging.Debugf("Adding auto-generated CNIDeviceInfoFile: %s", delegateRc.CNIDeviceInfoFile)
+		}
+	} else {
+		delegateRc = rc
+	}
+	return delegateRc
+}
+
 // GetGatewayFromResult retrieves gateway IP addresses from CNI result
-func GetGatewayFromResult(result *current.Result) []net.IP {
+func GetGatewayFromResult(result *cni100.Result) []net.IP {
 	var gateways []net.IP
 
 	for _, route := range result.Routes {
@@ -291,10 +326,25 @@ func GetGatewayFromResult(result *current.Result) []net.IP {
 	return gateways
 }
 
+// GetDefaultNetConf returns NetConf with default variables
+func GetDefaultNetConf() *NetConf {
+	// LogToStderr's default value set to true
+	return &NetConf{
+		BinDir:                 defaultBinDir,
+		ConfDir:                defaultConfDir,
+		CNIDir:                 defaultCNIDir,
+		LogToStderr:            true,
+		MultusNamespace:        defaultMultusNamespace,
+		NonIsolatedNamespaces:  []string{defaultNonIsolatedNamespace},
+		ReadinessIndicatorFile: defaultReadinessIndicatorFile,
+		SystemNamespaces:       []string{"kube-system"},
+	}
+
+}
+
 // LoadNetConf converts inputs (i.e. stdin) to NetConf
 func LoadNetConf(bytes []byte) (*NetConf, error) {
-	// LogToStderr's default value set to true
-	netconf := &NetConf{LogToStderr: true}
+	netconf := GetDefaultNetConf()
 
 	logging.Debugf("LoadNetConf: %s", string(bytes))
 	if err := json.Unmarshal(bytes, netconf); err != nil {
@@ -303,6 +353,7 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 
 	// Logging
 	logging.SetLogStderr(netconf.LogToStderr)
+	logging.SetLogOptions(netconf.LogOptions)
 	if netconf.LogFile != "" {
 		logging.SetLogFile(netconf.LogFile)
 	}
@@ -321,7 +372,7 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 			return nil, logging.Errorf("LoadNetConf: could not parse prevResult: %v", err)
 		}
 		netconf.RawPrevResult = nil
-		netconf.PrevResult, err = current.NewResultFromResult(res)
+		netconf.PrevResult, err = cni100.NewResultFromResult(res)
 		if err != nil {
 			return nil, logging.Errorf("LoadNetConf: could not convert result to current version: %v", err)
 		}
@@ -334,37 +385,11 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	// the existing delegate list and all delegates executed in-order.
 
 	if len(netconf.RawDelegates) == 0 && netconf.ClusterNetwork == "" {
-		return nil, logging.Errorf("LoadNetConf: at least one delegate/defaultNetwork must be specified")
-	}
-
-	if netconf.CNIDir == "" {
-		netconf.CNIDir = defaultCNIDir
-	}
-
-	if netconf.ConfDir == "" {
-		netconf.ConfDir = defaultConfDir
-	}
-
-	if netconf.BinDir == "" {
-		netconf.BinDir = defaultBinDir
-	}
-
-	if netconf.ReadinessIndicatorFile == "" {
-		netconf.ReadinessIndicatorFile = defaultReadinessIndicatorFile
-	}
-
-	if len(netconf.SystemNamespaces) == 0 {
-		netconf.SystemNamespaces = []string{"kube-system"}
-	}
-
-	if netconf.MultusNamespace == "" {
-		netconf.MultusNamespace = defaultMultusNamespace
+		return nil, logging.Errorf("LoadNetConf: at least one delegate/clusterNetwork must be specified")
 	}
 
 	// setup namespace isolation
-	if netconf.RawNonIsolatedNamespaces == "" {
-		netconf.NonIsolatedNamespaces = []string{defaultNonIsolatedNamespace}
-	} else {
+	if netconf.RawNonIsolatedNamespaces != "" {
 		// Parse the comma separated list
 		nonisolated := strings.Split(netconf.RawNonIsolatedNamespaces, ",")
 		// Cleanup the whitespace
@@ -398,6 +423,45 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	}
 
 	return netconf, nil
+}
+
+// LoadDaemonNetConf loads the configuration for the multus daemon
+func LoadDaemonNetConf(configPath string) (*ControllerNetConf, []byte, error) {
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read the config file's contents: %w", err)
+	}
+
+	daemonNetConf := &ControllerNetConf{}
+	if err := json.Unmarshal(config, daemonNetConf); err != nil {
+		return nil, nil, fmt.Errorf("failed to unmarshall the daemon configuration: %w", err)
+	}
+
+	logging.SetLogStderr(daemonNetConf.LogToStderr)
+	if daemonNetConf.LogFile != DefaultMultusDaemonConfigFile {
+		logging.SetLogFile(daemonNetConf.LogFile)
+	}
+	if daemonNetConf.LogLevel != "" {
+		logging.SetLogLevel(daemonNetConf.LogLevel)
+	}
+
+	if daemonNetConf.CNIDir == "" {
+		daemonNetConf.CNIDir = defaultCNIDir
+	}
+
+	if daemonNetConf.ConfDir == "" {
+		daemonNetConf.ConfDir = defaultConfDir
+	}
+
+	if daemonNetConf.BinDir == "" {
+		daemonNetConf.BinDir = defaultBinDir
+	}
+
+	if daemonNetConf.MultusSocketDir == "" {
+		daemonNetConf.MultusSocketDir = defaultMultusRunDir
+	}
+
+	return daemonNetConf, config, nil
 }
 
 // AddDelegates appends the new delegates to the delegates list
@@ -546,11 +610,13 @@ func CheckGatewayConfig(delegates []*DelegateNetConf) error {
 
 	// Check the gateway
 	for _, delegate := range delegates {
-		for _, gw := range delegate.GatewayRequest {
-			if gw.To4() != nil {
-				v4Gateways++
-			} else {
-				v6Gateways++
+		if delegate.GatewayRequest != nil {
+			for _, gw := range *delegate.GatewayRequest {
+				if gw.To4() != nil {
+					v4Gateways++
+				} else {
+					v6Gateways++
+				}
 			}
 		}
 	}
@@ -561,16 +627,14 @@ func CheckGatewayConfig(delegates []*DelegateNetConf) error {
 
 	// set filter flag for each delegate
 	for i, delegate := range delegates {
-		// no GatewayRequest
-		if delegate.GatewayRequest == nil {
-			delegates[i].IsFilterV4Gateway = true
-			delegates[i].IsFilterV6Gateway = true
-		} else {
-			for _, gw := range delegate.GatewayRequest {
+		delegates[i].IsFilterV4Gateway = true
+		delegates[i].IsFilterV6Gateway = true
+		if delegate.GatewayRequest != nil {
+			for _, gw := range *delegate.GatewayRequest {
 				if gw.To4() != nil {
-					delegates[i].IsFilterV6Gateway = true
+					delegates[i].IsFilterV4Gateway = false
 				} else {
-					delegates[i].IsFilterV4Gateway = true
+					delegates[i].IsFilterV6Gateway = false
 				}
 			}
 		}

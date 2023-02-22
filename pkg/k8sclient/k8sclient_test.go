@@ -1,4 +1,5 @@
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,13 +12,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package k8sclient
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +33,7 @@ import (
 
 	"k8s.io/client-go/kubernetes/fake"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -60,7 +59,7 @@ var _ = Describe("k8sclient operations", func() {
 	const fakePodName string = "testPod"
 
 	BeforeEach(func() {
-		tmpDir, err = ioutil.TempDir("", "multus_tmp")
+		tmpDir, err = os.MkdirTemp("", "multus_tmp")
 		Expect(err).NotTo(HaveOccurred())
 		genericConf = `{
 			"name":"node-cni-network",
@@ -512,7 +511,7 @@ var _ = Describe("k8sclient operations", func() {
 		Expect(netConf.Delegates[0].Conf.Type).To(Equal("mynet"))
 	})
 
-	It("retrieves cluster network from path", func() {
+	It("retrieves cluster network from directory path", func() {
 		fakePod := testutils.NewFakePod(fakePodName, "", "")
 		conf := fmt.Sprintf(`{
 			"name":"node-cni-network",
@@ -533,6 +532,37 @@ var _ = Describe("k8sclient operations", func() {
 				"type": "mynet",
 				"cniVersion": "0.2.0"
 			}`))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = GetK8sArgs(args)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = GetDefaultNetworks(fakePod, netConf, clientInfo, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(netConf.Delegates)).To(Equal(1))
+		Expect(netConf.Delegates[0].Conf.Name).To(Equal("net1"))
+		Expect(netConf.Delegates[0].Conf.Type).To(Equal("mynet"))
+	})
+
+	It("retrieves cluster network from cni config path", func() {
+		net1Name := filepath.Join(tmpDir, "10-net1.conf")
+		os.WriteFile(net1Name, []byte(`{
+				"name": "net1",
+				"type": "mynet",
+				"cniVersion": "0.3.1"
+			}`), 0600)
+
+		fakePod := testutils.NewFakePod(fakePodName, "", "")
+		conf := fmt.Sprintf(`{
+			"name":"node-cni-network",
+			"type":"multus",
+			"clusterNetwork": "%s",
+			"kubeconfig":"/etc/kubernetes/node-kubeconfig.yaml"
+		}`, net1Name)
+		netConf, err := types.LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+
+		clientInfo := NewFakeClientInfo()
+		_, err = clientInfo.AddPod(fakePod)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = GetK8sArgs(args)
 		Expect(err).NotTo(HaveOccurred())
@@ -734,7 +764,7 @@ var _ = Describe("k8sclient operations", func() {
 	})
 
 	It("uses cached delegates when an error in loading from pod annotation occurs", func() {
-		dir, err := ioutil.TempDir("", "multus-test")
+		dir, err := os.MkdirTemp("", "multus-test")
 		Expect(err).NotTo(HaveOccurred())
 		defer os.RemoveAll(dir) // clean up
 

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# multus thin plugin install shell script
+#
+# note: this script is designed for quick-install or just 'tasting multus' in your test environment.
+# hence it does not cover advanced Kubernetes cluster operation (update, uninstall and so on).
+
 # Always exit on errors.
 set -e
 
@@ -32,6 +37,7 @@ RESTART_CRIO=false
 CRIO_RESTARTED_ONCE=false
 RENAME_SOURCE_CONFIG_FILE=false
 SKIP_BINARY_COPY=false
+FORCE_CNI_VERSION=false # force-cni-version is only for e2e-kind.
 
 # Give help text for parameters.
 function usage()
@@ -83,10 +89,6 @@ function warn()
     log "WARN: {$1}"
 }
 
-if ! type python3 &> /dev/null; then
-	alias python=python3
-fi
-
 function checkCniVersion {
       cniversion_python_tmpfile=$(mktemp)
       cat << EOF > $cniversion_python_tmpfile
@@ -103,7 +105,7 @@ if version(v_top_level) >= v_040 and version(v_nested) < v_040:
     msg = "Multus cni version is %s while master plugin cni version is %s"
     print(msg % (v_top_level, v_nested))
 EOF
-      python $cniversion_python_tmpfile $1 $2
+      python3 $cniversion_python_tmpfile $1 $2
 }
 
 # Parse parameters given as arguments to this script.
@@ -117,6 +119,10 @@ while [ "$1" != "" ]; do
             ;;
         --cni-version)
             CNI_VERSION=$VALUE
+            ;;
+	# force-cni-version is only for e2e-kind testing
+	--force-cni-version)
+            FORCE_CNI_VERSION=$VALUE
             ;;
         --cni-bin-dir)
             CNI_BIN_DIR=$VALUE
@@ -212,52 +218,43 @@ if [ "$MULTUS_CONF_FILE" != "auto" ]; then
 fi
 
 # Make a multus.d directory (for our kubeconfig)
+
 mkdir -p $CNI_CONF_DIR/multus.d
 MULTUS_KUBECONFIG=$CNI_CONF_DIR/multus.d/multus.kubeconfig
 
 # ------------------------------- Generate a "kube-config"
 # Inspired by: https://tinyurl.com/y7r2knme
-SERVICE_ACCOUNT_PATH=/var/run/secrets/kubernetes.io/serviceaccount
-SERVICE_ACCOUNT_TOKEN_PATH=$SERVICE_ACCOUNT_PATH/token
+SERVICE_ACCOUNT_PATH=/run/secrets/kubernetes.io/serviceaccount
 KUBE_CA_FILE=${KUBE_CA_FILE:-$SERVICE_ACCOUNT_PATH/ca.crt}
+SERVICEACCOUNT_TOKEN=$(cat $SERVICE_ACCOUNT_PATH/token)
+SKIP_TLS_VERIFY=${SKIP_TLS_VERIFY:-false}
 
-LAST_SERVICEACCOUNT_MD5SUM=""
-LAST_KUBE_CA_FILE_MD5SUM=""
 
-function generateKubeConfig {
+# Check if we're running as a k8s pod.
+if [ -f "$SERVICE_ACCOUNT_PATH/token" ]; then
+  # We're running as a k8d pod - expect some variables.
+  if [ -z ${KUBERNETES_SERVICE_HOST} ]; then
+    error "KUBERNETES_SERVICE_HOST not set"; exit 1;
+  fi
+  if [ -z ${KUBERNETES_SERVICE_PORT} ]; then
+    error "KUBERNETES_SERVICE_PORT not set"; exit 1;
+  fi
 
-  # Check if we're running as a k8s pod.
-  if [ -f "$SERVICE_ACCOUNT_TOKEN_PATH" ]; then
-    # We're running as a k8d pod - expect some variables.
-    if [ -z ${KUBERNETES_SERVICE_HOST} ]; then
-      error "KUBERNETES_SERVICE_HOST not set"; exit 1;
-    fi
-    if [ -z ${KUBERNETES_SERVICE_PORT} ]; then
-      error "KUBERNETES_SERVICE_PORT not set"; exit 1;
-    fi
+  if [ "$SKIP_TLS_VERIFY" == "true" ]; then
+    TLS_CFG="insecure-skip-tls-verify: true"
+  elif [ -f "$KUBE_CA_FILE" ]; then
+    TLS_CFG="certificate-authority-data: $(cat $KUBE_CA_FILE | base64 | tr -d '\n')"
+  fi
 
-    if [ "$SKIP_TLS_VERIFY" == "true" ]; then
-      TLS_CFG="insecure-skip-tls-verify: true"
-    elif [ -f "$KUBE_CA_FILE" ]; then
-      TLS_CFG="certificate-authority-data: $(cat $KUBE_CA_FILE | base64 | tr -d '\n')"
-    fi
-
-    # Get the contents of service account token.
-    SERVICEACCOUNT_TOKEN=$(cat $SERVICE_ACCOUNT_TOKEN_PATH)
-
-    SKIP_TLS_VERIFY=${SKIP_TLS_VERIFY:-false}
-
-    # Write a kubeconfig file for the CNI plugin.  Do this
-    # to skip TLS verification for now.  We should eventually support
-    # writing more complete kubeconfig files. This is only used
-    # if the provided CNI network config references it.
-    touch $MULTUS_TEMP_KUBECONFIG
-    chmod ${KUBECONFIG_MODE:-600} $MULTUS_TEMP_KUBECONFIG
-    # Write the kubeconfig to a temp file first.
-    timenow=$(date)
-    cat > $MULTUS_TEMP_KUBECONFIG <<EOF
+  # Write a kubeconfig file for the CNI plugin.  Do this
+  # to skip TLS verification for now.  We should eventually support
+  # writing more complete kubeconfig files. This is only used
+  # if the provided CNI network config references it.
+  touch $MULTUS_TEMP_KUBECONFIG
+  chmod ${KUBECONFIG_MODE:-600} $MULTUS_TEMP_KUBECONFIG
+  # Write the kubeconfig to a temp file first.
+  cat > $MULTUS_TEMP_KUBECONFIG <<EOF
 # Kubeconfig file for Multus CNI plugin.
-# Generated at ${timenow}
 apiVersion: v1
 kind: Config
 clusters:
@@ -277,22 +274,14 @@ contexts:
 current-context: multus-context
 EOF
 
-    # Atomically move the temp kubeconfig to its permanent home.
-    mv -f $MULTUS_TEMP_KUBECONFIG $MULTUS_KUBECONFIG
+  # Atomically move the temp kubeconfig to its permanent home.
+  mv -f $MULTUS_TEMP_KUBECONFIG $MULTUS_KUBECONFIG
 
-    # Keep track of the md5sum
-    LAST_SERVICEACCOUNT_MD5SUM=$(md5sum $SERVICE_ACCOUNT_TOKEN_PATH | awk '{print $1}')
-    LAST_KUBE_CA_FILE_MD5SUM=$(md5sum $KUBE_CA_FILE | awk '{print $1}')
-
-  else
-    warn "Doesn't look like we're running in a kubernetes environment (no serviceaccount token)"
-  fi
+else
+  warn "Doesn't look like we're running in a kubernetes environment (no serviceaccount token)"
+fi
 
 # ---------------------- end Generate a "kube-config".
-
-}
-
-generateKubeConfig
 
 # ------------------------------- Generate "00-multus.conf"
 
@@ -304,6 +293,10 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
   while [ $found_master == false ]; do
     if [ "$MULTUS_MASTER_CNI_FILE_NAME" != "" ]; then
         MASTER_PLUGIN="$MULTUS_MASTER_CNI_FILE_NAME"
+	if [ ! -f "$MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN" ]; then
+		error "Cannot find master cni file $MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN"
+		exit 1;
+	fi
     else
         MASTER_PLUGIN="$(ls $MULTUS_AUTOCONF_DIR | grep -E '\.conf(list)?$' | grep -Ev '00-multus\.conf' | head -1)"
     fi
@@ -381,7 +374,7 @@ if [ "$MULTUS_CONF_FILE" == "auto" ]; then
 
       if [ "$OVERRIDE_NETWORK_NAME" == "true" ]; then
         MASTER_PLUGIN_NET_NAME="$(cat $MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN | \
-            python -c 'import json,sys;print(json.load(sys.stdin)["name"])')"
+            python3 -c 'import json,sys;print(json.load(sys.stdin)["name"])')"
       else
         MASTER_PLUGIN_NET_NAME="multus-cni-network"
       fi
@@ -403,17 +396,21 @@ else:
 EOF
 
       NESTED_CAPABILITIES_STRING="$(cat $MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN | \
-            python $capabilities_python_filter_tmpfile)"
+            python3 $capabilities_python_filter_tmpfile)"
       rm $capabilities_python_filter_tmpfile
       log "Nested capabilities string: $NESTED_CAPABILITIES_STRING"
 
       MASTER_PLUGIN_LOCATION=$MULTUS_AUTOCONF_DIR/$MASTER_PLUGIN
-      MASTER_PLUGIN_JSON="$(cat $MASTER_PLUGIN_LOCATION)"
-      log "Using $MASTER_PLUGIN_LOCATION as a source to generate the Multus configuration"
-      CHECK_CNI_VERSION=$(checkCniVersion $MASTER_PLUGIN_LOCATION $CNI_VERSION)
-      if [ "$CHECK_CNI_VERSION" != "" ] ; then
-        error "$CHECK_CNI_VERSION"
-        exit 1
+      if [ "$FORCE_CNI_VERSION" == true ]; then
+	      MASTER_PLUGIN_JSON="$(cat $MASTER_PLUGIN_LOCATION | sed -e "s/\"cniVersion.*/\"cniVersion\": \"$CNI_VERSION\",/g")"
+      else
+	      MASTER_PLUGIN_JSON="$(cat $MASTER_PLUGIN_LOCATION)"
+	      log "Using $MASTER_PLUGIN_LOCATION as a source to generate the Multus configuration"
+	      CHECK_CNI_VERSION=$(checkCniVersion $MASTER_PLUGIN_LOCATION $CNI_VERSION)
+	      if [ "$CHECK_CNI_VERSION" != "" ] ; then
+		      error "$CHECK_CNI_VERSION"
+		      exit 1
+	      fi
       fi
 
       CONF=$(cat <<-EOF
@@ -484,15 +481,6 @@ if [ "$MULTUS_CLEANUP_CONFIG_ON_EXIT" == true ]; then
       generateMultusConf
       log "Continuing watch loop after configuration regeneration..."
     fi
-
-    # Check the md5sum of the service account token and ca.
-    svcaccountsum=$(md5sum $SERVICE_ACCOUNT_TOKEN_PATH | awk '{print $1}')
-    casum=$(md5sum $KUBE_CA_FILE | awk '{print $1}')
-    if [ "$svcaccountsum" != "$LAST_SERVICEACCOUNT_MD5SUM" ] || [ "$casum" != "$LAST_KUBE_CA_FILE_MD5SUM" ]; then
-      # log "Detected service account or CA file change, regenerating kubeconfig..."
-      generateKubeConfig
-    fi
-
     sleep 1
   done
 else

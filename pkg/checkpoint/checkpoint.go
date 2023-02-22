@@ -1,4 +1,5 @@
 // Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,13 +12,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package checkpoint
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
@@ -33,7 +33,7 @@ type PodDevicesEntry struct {
 	PodUID        string
 	ContainerName string
 	ResourceName  string
-	DeviceIDs     []string
+	DeviceIDs     map[int64][]string
 	AllocResp     []byte
 }
 
@@ -72,7 +72,7 @@ func getCheckpoint(filePath string) (types.ResourceClient, error) {
 func (cp *checkpoint) getPodEntries() error {
 
 	cpd := &checkpointFileData{}
-	rawBytes, err := ioutil.ReadFile(cp.fileName)
+	rawBytes, err := os.ReadFile(cp.fileName)
 	if err != nil {
 		return logging.Errorf("getPodEntries: error reading file %s\n%v\n", checkPointfile, err)
 	}
@@ -86,7 +86,7 @@ func (cp *checkpoint) getPodEntries() error {
 	return nil
 }
 
-// GetComputeDeviceMap returns an instance of a map of ResourceInfo
+// GetPodResourceMap returns an instance of a map of ResourceInfo
 func (cp *checkpoint) GetPodResourceMap(pod *v1.Pod) (map[string]*types.ResourceInfo, error) {
 	podID := string(pod.UID)
 	resourceMap := make(map[string]*types.ResourceInfo)
@@ -97,12 +97,14 @@ func (cp *checkpoint) GetPodResourceMap(pod *v1.Pod) (map[string]*types.Resource
 	for _, pod := range cp.podEntires {
 		if pod.PodUID == podID {
 			entry, ok := resourceMap[pod.ResourceName]
-			if ok {
-				// already exists; append to it
-				entry.DeviceIDs = append(entry.DeviceIDs, pod.DeviceIDs...)
-			} else {
+			if !ok {
 				// new entry
-				resourceMap[pod.ResourceName] = &types.ResourceInfo{DeviceIDs: pod.DeviceIDs}
+				entry = &types.ResourceInfo{}
+				resourceMap[pod.ResourceName] = entry
+			}
+			for _, v := range pod.DeviceIDs {
+				// already exists; append to it
+				entry.DeviceIDs = append(entry.DeviceIDs, v...)
 			}
 		}
 	}

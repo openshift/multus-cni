@@ -48,10 +48,19 @@ Firstly, clone this GitHub repository.
 git clone https://github.com/k8snetworkplumbingwg/multus-cni.git && cd multus-cni
 ```
 
-We'll apply a YAML file with `kubectl` from this repo.
+We'll apply a YAML file with `kubectl` from this repo, which installs the Multus components.
+
+Recommended installation:
 
 ```
-cat ./deployments/multus-daemonset-thick-plugin.yml | kubectl apply -f -
+cat ./deployments/multus-daemonset-thick.yml | kubectl apply -f -
+```
+See the [thick plugin docs](./thick-plugin.md) for more information about this architecture.
+
+Alternatively, you may install the thin-plugin with:
+
+```
+cat ./deployments/multus-daemonset.yml | kubectl apply -f -
 ```
 
 ### What the Multus daemonset does

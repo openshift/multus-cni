@@ -22,30 +22,43 @@ Here's an illustration of the network interfaces attached to a pod, as provision
 
 ## Quickstart Installation Guide
 
-The quickstart installation method for Multus requires that you have first installed a Kubernetes CNI plugin to serve as your pod-to-pod network, which we refer to as your "default network" (a network interface that every pod will be created with). Each network attachment created by Multus will be in addition to this default network interface. For more detail on installing a default network CNI plugins, refer to our [quick-start guide](docs/quickstart.md).
+The quickstart installation method for Multus requires that you have first installed a Kubernetes CNI plugin to serve as your pod-to-pod network, which we refer to as your "default network" (a network interface that every pod will be created with). Each network attachment created by Multus will be in addition to this default network interface. For more detail on installing a default network CNI plugin, refer to our [quick-start guide](docs/quickstart.md).
 
-Clone this GitHub repository, we'll apply a daemonset which installs Multus using to `kubectl` from this repo. From the root directory of the clone, apply the daemonset YAML file:
+Clone this GitHub repository, and apply a daemonset which installs Multus using `kubectl`. From the root directory of the clone, apply the daemonset YAML file:
 
 ```
-cat ./deployments/multus-daemonset-thick-plugin.yml | kubectl apply -f -
+cat ./deployments/multus-daemonset-thick.yml | kubectl apply -f -
 ```
 
 This will configure your systems to be ready to use Multus CNI, but, to get started with adding additional interfaces to your pods, refer to our complete [quick-start guide](docs/quickstart.md)
 
-## Additional installation Options
+## Thin Plugin v.s Thick Plugin
 
-- Install via daemonset using the quick-start guide, above.
+With the multus 4.0 release, we introduce a new client/server-style plugin deployment. This new deployment is called ['thick plugin'](docs/thick-plugin.md), in contrast to deployments in previous versions, which is now called a 'thin plugin'. The new thick plugin consists of two binaries, multus-daemon and multus-shim CNI plugin. The 'multus-daemon' will be deployed to all nodes as a local agent and supports additional features, such as metrics, which were not available with the 'thin plugin' deployment before. Due to these additional features, the 'thick plugin' comes with the trade-off of consuming more resources than the 'thin plugin'.
+
+We recommend using the thick plugin in most environments, but if you wish to run the thin plugin, or are in a resource-constrained environment, you may do so with:
+
+```
+cat ./deployments/multus-daemonset.yml | kubectl apply -f -
+```
+
+## Additional Installation Options
+
+In addition to the [quick-start guide](docs/quickstart.md), you may:
+
 - Download binaries from [release page](https://github.com/k8snetworkplumbingwg/multus-cni/releases)
-- By Docker image from [Docker Hub](https://hub.docker.com/r/nfvpe/multus/tags/)
+- By Docker image from [GitHub Container Registry](https://github.com/orgs/k8snetworkplumbingwg/packages/container/package/multus-cni)
 - Or, roll-your-own and build from source
   - See [Development](docs/development.md)
 
 ## Comprehensive Documentation
 
 - [How to use](docs/how-to-use.md)
+- [Quick Start Guide](docs/quickstart.md)
 - [Configuration](docs/configuration.md)
-- [Development](docs/development.md)
+- [Development and Support Information](docs/development.md)
+- [Thick Plugin](docs/thick-plugin.md)
 
 ## Contact Us
 
-For any questions about Multus CNI, feel free to ask a question in #general in the [NPWG Slack](https://npwg-team.slack.com/), or open up a GitHub issue. Request an invite to NPWG slack [here](https://intel-corp.herokuapp.com/).
+For any questions about Multus CNI, open up a GitHub issue or feel free to ask a question in #general in the [NPWG Slack](https://npwg-team.slack.com/).

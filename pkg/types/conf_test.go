@@ -1,4 +1,5 @@
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,14 +12,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package types
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -29,7 +28,7 @@ import (
 	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/testing"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -49,7 +48,7 @@ var _ = Describe("config operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 		os.Setenv("CNI_PATH", "/some/path")
 
-		tmpDir, err = ioutil.TempDir("", "multus_tmp")
+		tmpDir, err = os.MkdirTemp("", "multus_tmp")
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -78,10 +77,10 @@ var _ = Describe("config operations", func() {
 }`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(netConf.Delegates)).To(Equal(1))
+		Expect(netConf.Delegates).To(HaveLen(1))
 		Expect(netConf.Delegates[0].Conf.Type).To(Equal("weave-net"))
 		Expect(netConf.Delegates[0].MasterPlugin).To(BeTrue())
-		Expect(len(netConf.RuntimeConfig.PortMaps)).To(Equal(1))
+		Expect(netConf.RuntimeConfig.PortMaps).To(HaveLen(1))
 	})
 
 	It("fails to load invalid multus configuration (bad json)", func() {
@@ -113,25 +112,52 @@ var _ = Describe("config operations", func() {
 
 	It("checks if logFile and logLevel are set correctly", func() {
 		conf := `{
-	    "name": "node-cni-network",
-			"type": "multus",
-			"logLevel": "debug",
-			"logFile": "/var/log/multus.log",
-	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
-	    "delegates": [{
-	        "type": "weave-net"
-	    }],
-		"runtimeConfig": {
-	      "portMappings": [
-	        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
-	      ]
-	    }
-
-	}`
+	"name": "node-cni-network",
+	"type": "multus",
+	"logLevel": "debug",
+	"logFile": "/var/log/multus.log",
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(netConf.LogLevel).To(Equal("debug"))
 		Expect(netConf.LogFile).To(Equal("/var/log/multus.log"))
+	})
+
+	It("checks if logOptions are set correctly", func() {
+		conf := `{
+	"name": "node-cni-network",
+	"type": "multus",
+	"logOptions": {
+		"maxAge": 5,
+		"maxSize": 100,
+		"maxBackups": 5,
+		"compress": true
+	},
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*netConf.LogOptions.MaxAge).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxBackups).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxSize).To(Equal(100))
+		Expect(*netConf.LogOptions.Compress).To(BeTrue())
 	})
 
 	It("properly sets namespace isolation using the default namespace", func() {
@@ -148,8 +174,8 @@ var _ = Describe("config operations", func() {
 	}`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(netConf.NamespaceIsolation).To(Equal(true))
-		Expect(len(netConf.NonIsolatedNamespaces)).To(Equal(1))
+		Expect(netConf.NamespaceIsolation).To(BeTrue())
+		Expect(netConf.NonIsolatedNamespaces).To(HaveLen(1))
 		Expect(netConf.NonIsolatedNamespaces[0]).To(Equal("default"))
 	})
 
@@ -168,8 +194,8 @@ var _ = Describe("config operations", func() {
 	}`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(netConf.NamespaceIsolation).To(Equal(true))
-		Expect(len(netConf.NonIsolatedNamespaces)).To(Equal(3))
+		Expect(netConf.NamespaceIsolation).To(BeTrue())
+		Expect(netConf.NonIsolatedNamespaces).To(HaveLen(3))
 		Expect(netConf.NonIsolatedNamespaces[0]).To(Equal("foo"))
 		Expect(netConf.NonIsolatedNamespaces[1]).To(Equal("bar"))
 		Expect(netConf.NonIsolatedNamespaces[2]).To(Equal("default"))
@@ -214,7 +240,7 @@ var _ = Describe("config operations", func() {
 }`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(netConf.Delegates)).To(Equal(2))
+		Expect(netConf.Delegates).To(HaveLen(2))
 		Expect(netConf.Delegates[0].Conf.Type).To(Equal("weave-net"))
 		Expect(netConf.Delegates[0].MasterPlugin).To(BeTrue())
 		Expect(netConf.Delegates[1].Conf.Type).To(Equal("foobar"))
@@ -304,9 +330,9 @@ var _ = Describe("config operations", func() {
 
 	It("check CheckSystemNamespaces() works fine", func() {
 		b1 := CheckSystemNamespaces("foobar", []string{"barfoo", "bafoo", "foobar"})
-		Expect(b1).To(Equal(true))
+		Expect(b1).To(BeTrue())
 		b2 := CheckSystemNamespaces("foobar1", []string{"barfoo", "bafoo", "foobar"})
-		Expect(b2).To(Equal(false))
+		Expect(b2).To(BeFalse())
 	})
 
 	It("assigns deviceID in delegated conf", func() {
@@ -838,10 +864,10 @@ var _ = Describe("config operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 		runtimeConf := mergeCNIRuntimeConfig(&origRuntimeConfig, delegate)
 		Expect(runtimeConf.PortMaps).NotTo(BeNil())
-		Expect(len(runtimeConf.PortMaps)).To(BeEquivalentTo(1))
+		Expect(runtimeConf.PortMaps).To(HaveLen(1))
 		Expect(runtimeConf.PortMaps[0]).To(Equal(portMapEntry1))
 		Expect(runtimeConf.Bandwidth).To(Equal(bandwidthEntry1))
-		Expect(len(runtimeConf.IPs)).To(BeEquivalentTo(1))
+		Expect(runtimeConf.IPs).To(HaveLen(1))
 		Expect(runtimeConf.Mac).To(Equal("c2:11:22:33:44:66"))
 		Expect(runtimeConf.InfinibandGUID).To(Equal("24:8a:07:03:00:8d:ae:2e"))
 		// The original RuntimeConfig must have not been overwritten
@@ -861,7 +887,7 @@ var _ = Describe("config operations", func() {
 
 		n, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(n.Delegates)).To(BeEquivalentTo(1))
+		Expect(n.Delegates).To(HaveLen(1))
 		Expect(n.Delegates[0].Name).To(Equal("weave"))
 	})
 
@@ -878,8 +904,119 @@ var _ = Describe("config operations", func() {
 
 		n, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(n.Delegates)).To(BeEquivalentTo(1))
+		Expect(n.Delegates).To(HaveLen(1))
 		Expect(n.Delegates[0].Name).To(Equal("weave-list"))
+	})
+
+	It("test LoadDelegateNetConf keeps without GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar" }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).To(BeNil())
+		Expect(netconf.IsFilterV4Gateway).To(BeTrue())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps empty GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(BeEmpty())
+		Expect(netconf.IsFilterV4Gateway).To(BeTrue())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [ "10.1.1.1" ] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(HaveLen(1))
+		Expect(netconf.IsFilterV4Gateway).To(BeFalse())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps dual GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [ "10.1.1.1", "fc00::1" ] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(HaveLen(2))
+		Expect(netconf.IsFilterV4Gateway).To(BeFalse())
+		Expect(netconf.IsFilterV6Gateway).To(BeFalse())
 	})
 
 })

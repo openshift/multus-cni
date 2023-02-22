@@ -1,4 +1,5 @@
-// Copyright (c) 2017 Intel Corporation
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,7 +12,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
 package testing
 
@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -55,7 +54,7 @@ func NewFakeNetAttachDefFile(namespace, name, filePath, fileData string) *netv1.
 			Namespace: namespace,
 		},
 	}
-	err := ioutil.WriteFile(filePath, []byte(fileData), 0600)
+	err := os.WriteFile(filePath, []byte(fileData), 0600)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	return netAttach
 }
@@ -129,13 +128,8 @@ func (r *Result) Version() string {
 
 // GetAsVersion returns a Result object given a version
 func (r *Result) GetAsVersion(version string) (types.Result, error) {
-	for _, supportedVersion := range types020.SupportedVersions {
-		if version == supportedVersion {
-			r.CNIVersion = version
-			return r, nil
-		}
-	}
-	return nil, fmt.Errorf("cannot convert version %q to %s", types020.SupportedVersions, version)
+	r.CNIVersion = version
+	return r, nil
 }
 
 // Print prints a Result's information to std out
@@ -165,4 +159,14 @@ func (r *Result) String() string {
 		str += fmt.Sprintf("IP6:%+v, ", *r.IP6)
 	}
 	return fmt.Sprintf("%sDNS:%+v", str, r.DNS)
+}
+
+// Int returns a pointer to an int
+func Int(i int) *int {
+	return &i
+}
+
+// Bool returns a pointer to a bool.
+func Bool(b bool) *bool {
+	return &b
 }

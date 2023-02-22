@@ -1,4 +1,5 @@
 // Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +16,14 @@
 package logging
 
 import (
+	"fmt"
+	"os"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
+	testutils "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/testing"
+	"gopkg.in/natefinch/lumberjack.v2"
+
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -54,12 +60,16 @@ var _ = Describe("logging operations", func() {
 	It("Check loglevel setter", func() {
 		SetLogLevel("debug")
 		Expect(loggingLevel).To(Equal(DebugLevel))
+		Expect(loggingLevel.String()).To(Equal("debug"))
 		SetLogLevel("Error")
 		Expect(loggingLevel).To(Equal(ErrorLevel))
+		Expect(loggingLevel.String()).To(Equal("error"))
 		SetLogLevel("VERbose")
 		Expect(loggingLevel).To(Equal(VerboseLevel))
+		Expect(loggingLevel.String()).To(Equal("verbose"))
 		SetLogLevel("PANIC")
 		Expect(loggingLevel).To(Equal(PanicLevel))
+		Expect(loggingLevel.String()).To(Equal("panic"))
 	})
 
 	It("Check loglevel setter with invalid level", func() {
@@ -74,9 +84,90 @@ var _ = Describe("logging operations", func() {
 		Expect(loggingStderr).NotTo(Equal(currentVal))
 	})
 
+	It("Check log function is worked", func() {
+		Debugf("foobar")
+		Verbosef("foobar")
+		Expect(Errorf("foobar")).NotTo(BeNil())
+		Panicf("foobar")
+	})
+
+	It("Check log function is worked with stderr", func() {
+		SetLogStderr(true)
+		Debugf("foobar")
+		Verbosef("foobar")
+		Expect(Errorf("foobar")).NotTo(BeNil())
+		Panicf("foobar")
+	})
+
+	It("Check log function is worked with stderr", func() {
+		tmpDir, err := os.MkdirTemp("", "multus_tmp")
+		SetLogFile(fmt.Sprintf("%s/log.txt", tmpDir))
+		Debugf("foobar")
+		Verbosef("foobar")
+		Expect(Errorf("foobar")).NotTo(BeNil())
+		Panicf("foobar")
+		logger.Filename = ""
+		loggingW = nil
+		err = os.RemoveAll(tmpDir)
+		Expect(err).NotTo(HaveOccurred())
+		// Revert the log variable to init
+		loggingW = nil
+		logger = &lumberjack.Logger{}
+	})
+
 	// Tests public getter
 	It("Check getter for logging level with current level", func() {
 		currentLevel := loggingLevel
 		Expect(currentLevel).To(Equal(GetLoggingLevel()))
 	})
+
+	It("Check user settings logOptions for logging", func() {
+		SetLogFile("/var/log/multus.log")
+		expectLogger := &lumberjack.Logger{
+			Filename:   "/var/log/multus.log",
+			MaxAge:     1,
+			MaxSize:    10,
+			MaxBackups: 1,
+			Compress:   true,
+		}
+		logOptions := &LogOptions{
+			MaxAge:     testutils.Int(1),
+			MaxSize:    testutils.Int(10),
+			MaxBackups: testutils.Int(1),
+			Compress:   testutils.Bool(true),
+		}
+		SetLogOptions(logOptions)
+		Expect(expectLogger).To(Equal(logger))
+	})
+
+	It("Check user settings logOptions and missing some options", func() {
+		SetLogFile("/var/log/multus.log")
+		expectLogger := &lumberjack.Logger{
+			Filename:   "/var/log/multus.log",
+			MaxAge:     5,
+			MaxSize:    100,
+			MaxBackups: 1,
+			Compress:   true,
+		}
+		logOptions := &LogOptions{
+			MaxBackups: testutils.Int(1),
+			Compress:   testutils.Bool(true),
+		}
+		SetLogOptions(logOptions)
+		Expect(expectLogger).To(Equal(logger))
+	})
+
+	It("Check user don't settings logOptions for logging", func() {
+		SetLogFile("/var/log/multus.log")
+		logger1 := &lumberjack.Logger{
+			Filename:   "/var/log/multus.log",
+			MaxAge:     5,
+			MaxSize:    100,
+			MaxBackups: 5,
+			Compress:   true,
+		}
+		SetLogOptions(nil)
+		Expect(logger1).To(Equal(logger))
+	})
+
 })
