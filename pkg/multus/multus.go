@@ -773,7 +773,7 @@ func CmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) er
 		if ok {
 			logging.Debugf("CmdDel: WARNING netns may not exist, netns: %s, err: %s", args.Netns, err)
 		} else {
-			return cmdErr(nil, "failed to open netns %q: %v", netns, err)
+			logging.Debugf("CmdDel: WARNING failed to open netns %q: %v", netns, err)
 		}
 	}
 
