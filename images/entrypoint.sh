@@ -485,6 +485,7 @@ if [ "$MULTUS_CLEANUP_CONFIG_ON_EXIT" == true ]; then
       log "Continuing watch loop after configuration regeneration..."
     fi
 
+    # added comment so PR will be valid
     # Check the md5sum of the service account token and ca.
     svcaccountsum=$(md5sum $SERVICE_ACCOUNT_TOKEN_PATH | awk '{print $1}')
     casum=$(md5sum $KUBE_CA_FILE | awk '{print $1}')
