@@ -14,6 +14,12 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
     "binDir": "/opt/cni/bin",
     "logFile": "/var/log/multus.log",
     "logLevel": "debug",
+    "logOptions": {
+        "maxAge": 5,
+        "maxSize": 100,
+        "maxBackups": 5,
+        "compress": true
+    },
     "capabilities": {
         "portMappings": true
     },    
@@ -44,6 +50,7 @@ Following is the example of multus config file, in `/etc/cni/net.d/`.
 * `logToStderr` (bool, optional): Enable or disable logging to `STDERR`. Defaults to true.
 * `logFile` (string, optional): file path for log file. multus puts log in given file
 * `logLevel` (string, optional): logging level ("debug", "error", "verbose", or "panic")
+* `logOptions` (object, optional): logging option, More detailed log configuration
 * `namespaceIsolation` (boolean, optional): Enables a security feature where pods are only allowed to access `NetworkAttachmentDefinitions` in the namespace where the pod resides. Defaults to false.
 * `capabilities` ({}list, optional): [capabilities](https://github.com/containernetworking/cni/blob/master/CONVENTIONS.md#dynamic-plugin-specific-fields-capabilities--runtime-configuration) supported by at least one of the delegates. (NOTE: Multus only supports portMappings/Bandwidth capability for cluster networks).
 * `readinessindicatorfile`: The path to a file whose existence denotes that the default network is ready
@@ -103,7 +110,7 @@ Optionally, you may have Multus log to a file on the filesystem. This file will 
 For example in your CNI configuration, you may set:
 
 ```
-    "LogFile": "/var/log/multus.log",
+    "logFile": "/var/log/multus.log",
 ```
 
 #### Logging Level
@@ -120,7 +127,27 @@ The available logging level values, in decreasing order of verbosity are:
 You may configure the logging level by using the `LogLevel` option in your CNI configuration. For example:
 
 ```
-    "LogLevel": "debug",
+    "logLevel": "debug",
+```
+
+#### Logging Options
+
+If you want a more detailed configuration of the logging, This includes the following parameters:
+
+* `maxAge` the maximum number of days to retain old log files in their filename
+* `maxSize` the maximum size in megabytes of the log file before it gets rotated
+* `maxBackups` the maximum number of days to retain old log files in their filename
+* `compress` compress determines if the rotated log files should be compressed using gzip
+
+For example in your CNI configuration, you may set:
+
+```
+    "logOptions": {
+        "maxAge": 5,
+        "maxSize": 100,
+        "maxBackups": 5,
+        "compress": true
+    }
 ```
 
 ### Namespace Isolation

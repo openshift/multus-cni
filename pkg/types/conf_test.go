@@ -113,25 +113,52 @@ var _ = Describe("config operations", func() {
 
 	It("checks if logFile and logLevel are set correctly", func() {
 		conf := `{
-	    "name": "node-cni-network",
-			"type": "multus",
-			"logLevel": "debug",
-			"logFile": "/var/log/multus.log",
-	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
-	    "delegates": [{
-	        "type": "weave-net"
-	    }],
-		"runtimeConfig": {
-	      "portMappings": [
-	        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
-	      ]
-	    }
-
-	}`
+	"name": "node-cni-network",
+	"type": "multus",
+	"logLevel": "debug",
+	"logFile": "/var/log/multus.log",
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
 		netConf, err := LoadNetConf([]byte(conf))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(netConf.LogLevel).To(Equal("debug"))
 		Expect(netConf.LogFile).To(Equal("/var/log/multus.log"))
+	})
+
+	It("checks if logOptions are set correctly", func() {
+		conf := `{
+	"name": "node-cni-network",
+	"type": "multus",
+	"logOptions": {
+		"maxAge": 5,
+		"maxSize": 100,
+		"maxBackups": 5,
+		"compress": true
+	},
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*netConf.LogOptions.MaxAge).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxBackups).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxSize).To(Equal(100))
+		Expect(*netConf.LogOptions.Compress).To(Equal(true))
 	})
 
 	It("properly sets namespace isolation using the default namespace", func() {
@@ -880,6 +907,74 @@ var _ = Describe("config operations", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(n.Delegates)).To(BeEquivalentTo(1))
 		Expect(n.Delegates[0].Name).To(Equal("weave-list"))
+	})
+
+	It("test LoadDelegateNetConf keeps without GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar" }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netconf.GatewayRequest).To(BeNil())
+	})
+
+	It("test LoadDelegateNetConf keeps empty GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(len(*netconf.GatewayRequest)).To(BeEquivalentTo(0))
+	})
+
+	It("test LoadDelegateNetConf keeps GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [ "10.1.1.1" ] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(len(*netconf.GatewayRequest)).To(BeEquivalentTo(1))
 	})
 
 })
