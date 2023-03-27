@@ -34,14 +34,15 @@ import (
 	nettypes "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/vishvananda/netlink"
-	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/netutils"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	k8snet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/netutils"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 )
 
 const (
@@ -60,7 +61,7 @@ var (
 	pollTimeout  = 45 * time.Second
 )
 
-//PrintVersionString ...
+// PrintVersionString ...
 func PrintVersionString() string {
 	return fmt.Sprintf("multus-cni version:%s, commit:%s, date:%s",
 		version, commit, date)
@@ -199,7 +200,7 @@ func confCheck(rt *libcni.RuntimeConf, rawNetconf []byte, multusNetconf *types.N
 
 	err = cniNet.CheckNetwork(context.Background(), conf, rt)
 	if err != nil {
-		return logging.Errorf("error in getting result from DelNetwork: %v", err)
+		return logging.Errorf("error in getting result from CheckNetwork: %v", err)
 	}
 
 	return err
@@ -547,7 +548,7 @@ func getPod(kubeClient *k8s.ClientInfo, k8sArgs *types.K8sArgs, warnOnly bool) (
 	return pod, nil
 }
 
-//CmdAdd ...
+// CmdAdd ...
 func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (cnitypes.Result, error) {
 	n, err := types.LoadNetConf(args.StdinData)
 	logging.Debugf("CmdAdd: %v, %v, %v", args, exec, kubeClient)
@@ -617,14 +618,14 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 			}
 		}
 
-		netName := ""
+		// We collect the delegate netName for the cachefile name as well as following errors
+		netName := delegate.Conf.Name
+		if netName == "" {
+			netName = delegate.ConfList.Name
+		}
 		tmpResult, err = delegateAdd(exec, kubeClient, pod, delegate, rt, n)
 		if err != nil {
 			// If the add failed, tear down all networks we already added
-			netName = delegate.Conf.Name
-			if netName == "" {
-				netName = delegate.ConfList.Name
-			}
 			// Ignore errors; DEL must be idempotent anyway
 			_ = delPlugins(exec, nil, args, k8sArgs, n.Delegates, idx, n.RuntimeConfig, n)
 			return nil, cmdPluginErr(k8sArgs, netName, "error adding container to network %q: %v", netName, err)
@@ -643,7 +644,7 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 			// https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ (4.1.2.1.9)
 			// the list can be empty; if it is, we'll assume the CNI's config for the default gateway holds,
 			// else we'll update the defaultgateway to the one specified.
-			if delegate.GatewayRequest != nil && delegate.GatewayRequest[0] != nil {
+			if delegate.GatewayRequest != nil && len(*delegate.GatewayRequest) != 0 {
 				deleteV4gateway = true
 				adddefaultgateway = true
 				logging.Debugf("Detected gateway override on interface %v to %v", ifName, delegate.GatewayRequest)
@@ -659,16 +660,12 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 			// https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ (4.1.2.1.9)
 			// the list can be empty; if it is, we'll assume the CNI's config for the default gateway holds,
 			// else we'll update the defaultgateway to the one specified.
-			if delegate.GatewayRequest != nil && delegate.GatewayRequest[0] != nil {
+			if delegate.GatewayRequest != nil && len(*delegate.GatewayRequest) != 0 {
 				deleteV6gateway = true
 				adddefaultgateway = true
 				logging.Debugf("Detected gateway override on interface %v to %v", ifName, delegate.GatewayRequest)
 			}
 		}
-
-		// Remove namespace from delegate.Name for Add/Del CNI cache
-		nameSlice := strings.Split(delegate.Name, "/")
-		netName = nameSlice[len(nameSlice)-1]
 
 		// Remove gateway if `default-route` network selection is specified
 		if deleteV4gateway || deleteV6gateway {
@@ -684,11 +681,11 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 
 		// Here we'll set the default gateway which specified in `default-route` network selection
 		if adddefaultgateway {
-			err = netutils.SetDefaultGW(args, ifName, delegate.GatewayRequest)
+			err = netutils.SetDefaultGW(args, ifName, *delegate.GatewayRequest)
 			if err != nil {
 				return nil, cmdErr(k8sArgs, "error setting default gateway: %v", err)
 			}
-			err = netutils.AddDefaultGWCache(n.CNIDir, rt, netName, ifName, delegate.GatewayRequest)
+			err = netutils.AddDefaultGWCache(n.CNIDir, rt, netName, ifName, *delegate.GatewayRequest)
 			if err != nil {
 				return nil, cmdErr(k8sArgs, "error setting default gateway in cache: %v", err)
 			}
@@ -740,7 +737,7 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 	return result, nil
 }
 
-//CmdCheck ...
+// CmdCheck ...
 func CmdCheck(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) error {
 	in, err := types.LoadNetConf(args.StdinData)
 	logging.Debugf("CmdCheck: %v, %v, %v", args, exec, kubeClient)
@@ -766,7 +763,7 @@ func CmdCheck(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) 
 	return nil
 }
 
-//CmdDel ...
+// CmdDel ...
 func CmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) error {
 	in, err := types.LoadNetConf(args.StdinData)
 	logging.Debugf("CmdDel: %v, %v, %v", args, exec, kubeClient)
@@ -853,6 +850,7 @@ func CmdDel(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) er
 		}
 	} else {
 		defer os.Remove(path)
+		in.Delegates = []*types.DelegateNetConf{}
 		if err := json.Unmarshal(netconfBytes, &in.Delegates); err != nil {
 			return cmdErr(k8sArgs, "failed to load netconf: %v", err)
 		}
