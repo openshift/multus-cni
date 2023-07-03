@@ -29,7 +29,7 @@ import (
 	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	cniversion "github.com/containernetworking/cni/pkg/version"
 	netfake "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/fake"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/k8sclient"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
 
@@ -146,7 +146,7 @@ func ParseEnvironment(environ []string) map[string]string {
 	return m
 }
 
-func (f *fakeExec) ExecPlugin(ctx context.Context, pluginPath string, stdinData []byte, environ []string) ([]byte, error) {
+func (f *fakeExec) ExecPlugin(_ context.Context, pluginPath string, stdinData []byte, environ []string) ([]byte, error) {
 	envMap := ParseEnvironment(environ)
 	cmd := envMap["CNI_COMMAND"]
 	var index int

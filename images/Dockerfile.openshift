@@ -39,4 +39,4 @@ LABEL io.k8s.display-name="Multus CNI" \
       io.openshift.tags="openshift" \
       maintainer="Doug Smith <dosmith@redhat.com>"
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/thin_entrypoint"]

@@ -23,7 +23,7 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 )
 
 // ShimNetConf for the SHIM cni config file written in json
@@ -34,7 +34,7 @@ type ShimNetConf struct {
 	// types.NetConf
 
 	CNIVersion      string `json:"cniVersion,omitempty"`
-	MultusSocketDir string `json:"socketDir"`
+	MultusSocketDir string `json:"daemonSocketDir"`
 	LogFile         string `json:"logFile,omitempty"`
 	LogLevel        string `json:"logLevel,omitempty"`
 	LogToStderr     bool   `json:"logToStderr,omitempty"`
@@ -65,7 +65,8 @@ func CmdCheck(args *skel.CmdArgs) error {
 func CmdDel(args *skel.CmdArgs) error {
 	_, _, err := postRequest(args)
 	if err != nil {
-		return logging.Errorf("CmdDel (shim): %v", err)
+		// No error in DEL (as of CNI spec)
+		logging.Errorf("CmdCheck (shim): %v", err)
 	}
 	return nil
 }

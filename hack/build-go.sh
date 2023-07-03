@@ -7,6 +7,19 @@ if [ ! -d ${DEST_DIR} ]; then
 	mkdir ${DEST_DIR}
 fi
 
+# Specify correspondingGOARCH from TARGETPLATFORM
+if [ "$TARGETPLATFORM" = "linux/amd64" ]; then
+	export GOARCH=amd64
+elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then
+	export GOARCH=arm64
+elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then
+	export GOARCH=arm
+elif [ "$TARGETPLATFORM" = "linux/ppc64le" ]; then
+	export GOARCH=ppc64le
+elif [ "$TARGETPLATFORM" = "linux/s390x" ]; then
+	export GOARCH=s390x
+fi
+
 # version information
 hasGit=true
 git version > /dev/null 2>&1 || hasGit=false
@@ -39,11 +52,11 @@ fi
 # Add version/commit/date into binary
 DATE=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" --iso-8601=seconds)
 COMMIT=${COMMIT:-$(git rev-parse --verify HEAD)}
-LDFLAGS="-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.version=${VERSION} \
-	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.commit=${COMMIT} \
-	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.gitTreeState=${GIT_TREE_STATE} \
-	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.releaseStatus=${RELEASE_STATUS} \
-	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus.date=${DATE}"
+LDFLAGS="-X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.version=${VERSION} \
+	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.commit=${COMMIT} \
+	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.gitTreeState=${GIT_TREE_STATE} \
+	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.releaseStatus=${RELEASE_STATUS} \
+	-X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.date=${DATE}"
 export CGO_ENABLED=0
 
 # build with go modules
@@ -59,3 +72,7 @@ echo "Building multus-daemon"
 go build -o "${DEST_DIR}"/multus-daemon -ldflags "${LDFLAGS}" ./cmd/multus-daemon
 echo "Building multus-shim"
 go build -o "${DEST_DIR}"/multus-shim -ldflags "${LDFLAGS}" ./cmd/multus-shim
+echo "Building install_multus"
+go build -o "${DEST_DIR}"/install_multus -ldflags "${LDFLAGS}" ./cmd/install_multus
+echo "Building thin_entrypoint"
+go build -o "${DEST_DIR}"/thin_entrypoint -ldflags "${LDFLAGS}" ./cmd/thin_entrypoint

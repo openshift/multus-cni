@@ -16,8 +16,9 @@
 package types
 
 import (
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
 	"net"
+
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 
 	"github.com/containernetworking/cni/pkg/types"
 	cni100 "github.com/containernetworking/cni/pkg/types/100"
@@ -179,21 +180,4 @@ type ResourceInfo struct {
 type ResourceClient interface {
 	// GetPodResourceMap returns an instance of a map of Pod ResourceInfo given a (Pod name, namespace) tuple
 	GetPodResourceMap(*v1.Pod) (map[string]*ResourceInfo, error)
-}
-
-// ControllerNetConf for the controller cni configuration
-type ControllerNetConf struct {
-	ChrootDir   string `json:"chrootDir,omitempty"`
-	ConfDir     string `json:"confDir"`
-	CNIDir      string `json:"cniDir"`
-	BinDir      string `json:"binDir"`
-	LogFile     string `json:"logFile"`
-	LogLevel    string `json:"logLevel"`
-	LogToStderr bool   `json:"logToStderr,omitempty"`
-
-	MetricsPort *int `json:"metricsPort,omitempty"`
-
-	// Option to point to the path of the unix domain socket through which the
-	// multus client / server communicate.
-	MultusSocketDir string `json:"socketDir"`
 }
