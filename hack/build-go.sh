@@ -48,7 +48,7 @@ export CGO_ENABLED=0
 
 # build with go modules
 export GO111MODULE=on
-BUILD_ARGS=(-o ${DEST_DIR}/multus -tags no_openssl)
+BUILD_ARGS=(-o ${DEST_DIR}/multus)
 if [ -n "$MODMODE" ]; then
 	BUILD_ARGS+=(-mod "$MODMODE")
 fi
