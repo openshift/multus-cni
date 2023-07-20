@@ -36,9 +36,9 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	netfake "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/fake"
-	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/server/api"
-	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/testing"
+	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/server/api"
+	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/testing"
 )
 
 const suiteName = "Thick CNI architecture"
@@ -46,17 +46,17 @@ const suiteName = "Thick CNI architecture"
 type fakeExec struct{}
 
 // ExecPlugin executes the plugin
-func (fe *fakeExec) ExecPlugin(ctx context.Context, pluginPath string, stdinData []byte, environ []string) ([]byte, error) {
+func (fe *fakeExec) ExecPlugin(_ context.Context, _ string, _ []byte, _ []string) ([]byte, error) {
 	return []byte("{}"), nil
 }
 
 // FindInPath finds in path
-func (fe *fakeExec) FindInPath(plugin string, paths []string) (string, error) {
+func (fe *fakeExec) FindInPath(_ string, _ []string) (string, error) {
 	return "", nil
 }
 
 // Decode decodes
-func (fe *fakeExec) Decode(jsonBytes []byte) (version.PluginInfo, error) {
+func (fe *fakeExec) Decode(_ []byte) (version.PluginInfo, error) {
 	return nil, nil
 }
 
@@ -221,10 +221,7 @@ func prepareCNIEnv(netnsPath string, namespaceName string, podName string, podUI
 	if err := os.Setenv("CNI_NETNS", netnsPath); err != nil {
 		return err
 	}
-	if err := os.Setenv("CNI_ARGS", cniArgs); err != nil {
-		return err
-	}
-	return nil
+	return os.Setenv("CNI_ARGS", cniArgs)
 }
 
 func teardownCNIEnv() error {
@@ -237,10 +234,7 @@ func teardownCNIEnv() error {
 	if err := os.Unsetenv("CNI_NETNS"); err != nil {
 		return err
 	}
-	if err := os.Unsetenv("CNI_ARGS"); err != nil {
-		return err
-	}
-	return nil
+	return os.Unsetenv("CNI_ARGS")
 }
 
 func createFakePod(k8sClient *k8s.ClientInfo, podName string) error {
@@ -285,7 +279,7 @@ func referenceConfig(thickPluginSocketDir string) string {
 	"cniVersion": "0.4.0",
         "name": "node-cni-network",
         "type": "multus",
-        "socketDir": "%s",
+        "daemonSocketDir": "%s",
         "defaultnetworkfile": "/tmp/foo.multus.conf",
         "defaultnetworkwaitseconds": 3,
         "delegates": [{

@@ -25,7 +25,7 @@ import (
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 )
 
 // DeleteDefaultGW removes the default gateway from marked interfaces.
@@ -92,7 +92,7 @@ func SetDefaultGW(netnsPath string, ifName string, gateways []net.IP) error {
 }
 
 // DeleteDefaultGWCache updates libcni cache to remove default gateway routes in result
-func DeleteDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, ifName string, ipv4, ipv6 bool) error {
+func DeleteDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, _ string, ipv4, ipv6 bool) error {
 	cacheFile := filepath.Join(cacheDir, "results", fmt.Sprintf("%s-%s-%s", netName, rt.ContainerID, rt.IfName))
 
 	cache, err := os.ReadFile(cacheFile)
@@ -139,6 +139,7 @@ func deleteDefaultGWCacheBytes(cacheFile []byte, ipv4, ipv6 bool) ([]byte, error
 }
 
 func deleteDefaultGWResultRoutes(routes []interface{}, dstGW string) ([]interface{}, error) {
+	var newRoutes []interface{}
 	for i, r := range routes {
 		route, ok := r.(map[string]interface{})
 		if !ok {
@@ -150,12 +151,12 @@ func deleteDefaultGWResultRoutes(routes []interface{}, dstGW string) ([]interfac
 			if !ok {
 				return nil, fmt.Errorf("wrong dst format: %v", route["dst"])
 			}
-			if dst == dstGW {
-				routes = append(routes[:i], routes[i+1:]...)
+			if dst != dstGW {
+				newRoutes = append(newRoutes, routes[i])
 			}
 		}
 	}
-	return routes, nil
+	return newRoutes, nil
 }
 
 func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[string]interface{}, error) {
@@ -264,7 +265,7 @@ func deleteDefaultGWResult020(result map[string]interface{}, ipv4, ipv6 bool) (m
 }
 
 // AddDefaultGWCache updates libcni cache to add default gateway result
-func AddDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, ifName string, gw []net.IP) error {
+func AddDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, _ string, gw []net.IP) error {
 	cacheFile := filepath.Join(cacheDir, "results", fmt.Sprintf("%s-%s-%s", netName, rt.ContainerID, rt.IfName))
 
 	cache, err := os.ReadFile(cacheFile)

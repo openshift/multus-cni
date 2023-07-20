@@ -5,13 +5,18 @@
 Currently multus team supports Kubernetes that Kubernetes community maintains.
 See [Version Skew Policy](https://kubernetes.io/releases/version-skew-policy/) for the details.
 
+## How to debug multus-cni thin image?
+
+Latest multus uses [distroless](https://github.com/GoogleContainerTools/distroless) container image for its base,
+hence there is no shell command. If you want to execute shell in multus pod, please use `-debug` image (e.g. ghcr.io/k8snetworkplumbingwg/multus-cni:snapshot-debug), which has shell.
+
 ## How to utilize multus-cni code as library?
 
 Multus now uses [gopkg.in](http://gopkg.in/) to expose its code as library.
 You can use following command to import our code into your go code.
 
 ```
-go get gopkg.in/k8snetworkplumbingwg/multus-cni.v3
+go get gopkg.in/k8snetworkplumbingwg/multus-cni.v4
 ```
 
 ## How do I submit an issue?

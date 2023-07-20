@@ -21,8 +21,16 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/k8sclient"
+)
+
+const (
+	// const block for multus-daemon configs
+
+	// DefaultMultusDaemonConfigFile is the Default path of the config file
+	DefaultMultusDaemonConfigFile = "/etc/cni/net.d/multus.d/daemon-config.json"
+	// DefaultMultusRunDir specifies default RunDir for multus
+	DefaultMultusRunDir = "/run/multus/"
 )
 
 // Metrics represents server's metrics.
@@ -41,26 +49,18 @@ type Server struct {
 	metrics      *Metrics
 }
 
-// ShimNetConf for the shim cni config file written in json
-type ShimNetConf struct {
-	types.NetConf
-
-	MultusSocketDir string `json:"socketDir"`
-	LogFile         string `json:"logFile,omitempty"`
-	LogLevel        string `json:"logLevel,omitempty"`
-	LogToStderr     bool   `json:"logToStderr,omitempty"`
-}
-
 // ControllerNetConf for the controller cni configuration
 type ControllerNetConf struct {
-	ConfDir     string `json:"confDir"`
-	CNIDir      string `json:"cniDir"`
-	BinDir      string `json:"binDir"`
+	ChrootDir   string `json:"chrootDir,omitempty"`
 	LogFile     string `json:"logFile"`
 	LogLevel    string `json:"logLevel"`
 	LogToStderr bool   `json:"logToStderr,omitempty"`
 
+	MetricsPort *int `json:"metricsPort,omitempty"`
+
 	// Option to point to the path of the unix domain socket through which the
 	// multus client / server communicate.
-	MultusSocketDir string `json:"socketDir"`
+	SocketDir string `json:"socketDir"`
+
+	ConfigFileContents []byte `json:"-"`
 }

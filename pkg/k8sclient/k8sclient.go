@@ -42,9 +42,9 @@ import (
 	nettypes "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netclient "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/typed/k8s.cni.cncf.io/v1"
 	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/kubeletclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/kubeletclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 )
 
 const (
@@ -292,6 +292,11 @@ func getKubernetesDelegate(client *ClientInfo, net *types.NetworkSelectionElemen
 		}
 	}
 
+	// acquire lock to access file
+	if types.ChrootMutex != nil {
+		types.ChrootMutex.Lock()
+		defer types.ChrootMutex.Unlock()
+	}
 	configBytes, err := netutils.GetCNIConfig(customResource, confdir)
 	if err != nil {
 		return nil, resourceMap, err
@@ -542,6 +547,13 @@ func getNetDelegate(client *ClientInfo, pod *v1.Pod, netname, confdir, namespace
 		}
 
 		// option2) search CNI json config file, which has <netname> as CNI name, from confDir
+
+		// acquire lock to access file
+		if types.ChrootMutex != nil {
+			types.ChrootMutex.Lock()
+			defer types.ChrootMutex.Unlock()
+		}
+
 		configBytes, err = netutils.GetCNIConfigFromFile(netname, confdir)
 		if err == nil {
 			delegate, err := types.LoadDelegateNetConf(configBytes, nil, "", "")
@@ -551,6 +563,12 @@ func getNetDelegate(client *ClientInfo, pod *v1.Pod, netname, confdir, namespace
 			return delegate, resourceMap, nil
 		}
 	} else {
+		// acquire lock to access file
+		if types.ChrootMutex != nil {
+			types.ChrootMutex.Lock()
+			defer types.ChrootMutex.Unlock()
+		}
+
 		fInfo, err := os.Stat(netname)
 		if err != nil {
 			return nil, resourceMap, err

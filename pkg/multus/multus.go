@@ -39,10 +39,10 @@ import (
 	k8snet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/netutils"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/netutils"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 )
 
 const (
@@ -107,7 +107,7 @@ func getIfname(delegate *types.DelegateNetConf, argif string, idx int) string {
 	return fmt.Sprintf("net%d", idx)
 }
 
-func getDelegateDeviceInfo(delegate *types.DelegateNetConf, runtimeConf *libcni.RuntimeConf) (*nettypes.DeviceInfo, error) {
+func getDelegateDeviceInfo(_ *types.DelegateNetConf, runtimeConf *libcni.RuntimeConf) (*nettypes.DeviceInfo, error) {
 	// If the DPDeviceInfoFile was created, it was copied to the CNIDeviceInfoFile.
 	// If the DPDeviceInfoFile was not created, CNI might have created it. So
 	// either way, load CNIDeviceInfoFile.
@@ -651,7 +651,7 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 
 		// check Interfaces and IPs because some CNI plugin does not create any interface
 		// and just returns empty result
-		if res != nil &&  (res.Interfaces != nil || res.IPs != nil) {
+		if res != nil && (res.Interfaces != nil || res.IPs != nil) {
 			// Remove gateway from routing table if the gateway is not used
 			deleteV4gateway := false
 			deleteV6gateway := false

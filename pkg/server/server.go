@@ -32,12 +32,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/k8sclient"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/multus"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/server/api"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/server/config"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
+	k8s "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/k8sclient"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/server/api"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/server/config"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 )
 
 const (
@@ -128,7 +128,7 @@ func GetListener(socketPath string) (net.Listener, error) {
 }
 
 // NewCNIServer creates and returns a new Server object which will listen on a socket in the given path
-func NewCNIServer(daemonConfig *types.ControllerNetConf, serverConfig []byte) (*Server, error) {
+func NewCNIServer(daemonConfig *ControllerNetConf, serverConfig []byte) (*Server, error) {
 	kubeClient, err := k8s.InClusterK8sClient()
 	if err != nil {
 		return nil, fmt.Errorf("error getting k8s client: %v", err)
@@ -136,14 +136,16 @@ func NewCNIServer(daemonConfig *types.ControllerNetConf, serverConfig []byte) (*
 
 	exec := invoke.Exec(nil)
 	if daemonConfig.ChrootDir != "" {
-		exec = &ChrootExec{
+		chrootExec := &ChrootExec{
 			Stderr:    os.Stderr,
 			chrootDir: daemonConfig.ChrootDir,
 		}
+		types.ChrootMutex = &chrootExec.mu
+		exec = chrootExec
 		logging.Verbosef("server configured with chroot: %s", daemonConfig.ChrootDir)
 	}
 
-	return newCNIServer(daemonConfig.MultusSocketDir, kubeClient, exec, serverConfig)
+	return newCNIServer(daemonConfig.SocketDir, kubeClient, exec, serverConfig)
 }
 
 func newCNIServer(rundir string, kubeClient *k8s.ClientInfo, exec invoke.Exec, servConfig []byte) (*Server, error) {
@@ -278,7 +280,7 @@ func (s *Server) handleDelegateRequest(r *http.Request) ([]byte, error) {
 	if err := json.Unmarshal(b, &cr); err != nil {
 		return nil, err
 	}
-	cmdType, cniCmdArgs, err := extractCniData(&cr, s.serverConfig) // not override config
+	cmdType, cniCmdArgs, err := extractCniData(&cr, s.serverConfig)
 	if err != nil {
 		return nil, fmt.Errorf("could not extract the CNI command args: %w", err)
 	}
@@ -499,7 +501,7 @@ func cmdDelegateAdd(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs, exec invoke.E
 	return serializeResult(result)
 }
 
-func cmdDelegateCheck(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo, multusConfig *types.NetConf) error {
+func cmdDelegateCheck(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs, exec invoke.Exec, _ *k8s.ClientInfo, multusConfig *types.NetConf) error {
 	delegateCNIConf := &types.DelegateNetConf{}
 	if err := json.Unmarshal(cmdArgs.StdinData, delegateCNIConf); err != nil {
 		return err
@@ -529,4 +531,25 @@ func cmdDelegateDel(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs, exec invoke.E
 	}
 	rt, _ := types.CreateCNIRuntimeConf(cmdArgs, k8sArgs, cmdArgs.IfName, nil, delegateCNIConf)
 	return multus.DelegateDel(exec, pod, delegateCNIConf, rt, multusConfig)
+}
+
+// LoadDaemonNetConf loads the configuration for the multus daemon
+func LoadDaemonNetConf(config []byte) (*ControllerNetConf, error) {
+	daemonNetConf := &ControllerNetConf{
+		SocketDir: DefaultMultusRunDir,
+	}
+	if err := json.Unmarshal(config, daemonNetConf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshall the daemon configuration: %w", err)
+	}
+
+	logging.SetLogStderr(daemonNetConf.LogToStderr)
+	if daemonNetConf.LogFile != DefaultMultusDaemonConfigFile {
+		logging.SetLogFile(daemonNetConf.LogFile)
+	}
+	if daemonNetConf.LogLevel != "" {
+		logging.SetLogLevel(daemonNetConf.LogLevel)
+	}
+	daemonNetConf.ConfigFileContents = config
+
+	return daemonNetConf, nil
 }

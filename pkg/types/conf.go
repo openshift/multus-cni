@@ -21,13 +21,14 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
 	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 )
 
 const (
@@ -39,12 +40,8 @@ const (
 	defaultNonIsolatedNamespace   = "default"
 )
 
-// const block for multus-daemon configs
-const (
-	// DefaultMultusDaemonConfigFile is the default path of the config file
-	DefaultMultusDaemonConfigFile = "/etc/cni/net.d/multus.d/daemon-config.json"
-	defaultMultusRunDir           = "/run/multus/"
-)
+// ChrootMutex provides lock to access host filesystem
+var ChrootMutex *sync.Mutex
 
 // LoadDelegateNetConfList reads DelegateNetConf from bytes
 func LoadDelegateNetConfList(bytes []byte, delegateConf *DelegateNetConf) error {
@@ -423,45 +420,6 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	}
 
 	return netconf, nil
-}
-
-// LoadDaemonNetConf loads the configuration for the multus daemon
-func LoadDaemonNetConf(configPath string) (*ControllerNetConf, []byte, error) {
-	config, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read the config file's contents: %w", err)
-	}
-
-	daemonNetConf := &ControllerNetConf{}
-	if err := json.Unmarshal(config, daemonNetConf); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshall the daemon configuration: %w", err)
-	}
-
-	logging.SetLogStderr(daemonNetConf.LogToStderr)
-	if daemonNetConf.LogFile != DefaultMultusDaemonConfigFile {
-		logging.SetLogFile(daemonNetConf.LogFile)
-	}
-	if daemonNetConf.LogLevel != "" {
-		logging.SetLogLevel(daemonNetConf.LogLevel)
-	}
-
-	if daemonNetConf.CNIDir == "" {
-		daemonNetConf.CNIDir = defaultCNIDir
-	}
-
-	if daemonNetConf.ConfDir == "" {
-		daemonNetConf.ConfDir = defaultConfDir
-	}
-
-	if daemonNetConf.BinDir == "" {
-		daemonNetConf.BinDir = defaultBinDir
-	}
-
-	if daemonNetConf.MultusSocketDir == "" {
-		daemonNetConf.MultusSocketDir = defaultMultusRunDir
-	}
-
-	return daemonNetConf, config, nil
 }
 
 // AddDelegates appends the new delegates to the delegates list
