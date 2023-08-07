@@ -25,7 +25,8 @@ RUN mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/rhel9/bin && \
        mkdir -p /usr/src/multus-cni/rhel8/bin
 COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel9/bin
-COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
+# pod container image is RHEL8 based, so use rhel8
+COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
 COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel8/bin
 ADD ./images/entrypoint.sh /
 
