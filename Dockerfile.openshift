@@ -25,9 +25,10 @@ RUN mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/rhel9/bin && \
        mkdir -p /usr/src/multus-cni/rhel8/bin
 COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel9/bin
-# pod container image is RHEL8 based, so use rhel8
-COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
 COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel8/bin
+# copy container base image binary to /usr/src/multus-cni/bin
+RUN bash -c '. /etc/os-release; \
+	cp /usr/src/multus-cni/rhel$(echo "${VERSION_ID}" | cut -f 1 -d .)/bin/* /usr/src/multus-cni/bin'
 ADD ./images/entrypoint.sh /
 
 LABEL io.k8s.display-name="Multus CNI" \
