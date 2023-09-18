@@ -76,3 +76,7 @@ echo "Building install_multus"
 go build -o "${DEST_DIR}"/install_multus -ldflags "${LDFLAGS}" ./cmd/install_multus
 echo "Building thin_entrypoint"
 go build -o "${DEST_DIR}"/thin_entrypoint -ldflags "${LDFLAGS}" ./cmd/thin_entrypoint
+echo "Building kubeconfig_generator"
+go build -o "${DEST_DIR}"/kubeconfig_generator -ldflags "${LDFLAGS}" ./cmd/kubeconfig_generator
+echo "Building cert-approver"
+go build -o "${DEST_DIR}"/cert-approver -ldflags "${LDFLAGS}" ./cmd/cert-approver
