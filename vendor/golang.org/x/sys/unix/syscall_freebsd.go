@@ -165,8 +165,6 @@ func Getfsstat(buf []Statfs_t, flags int) (n int, err error) {
 
 //sys	sysctl(mib []_C_int, old *byte, oldlen *uintptr, new *byte, newlen uintptr) (err error) = SYS___SYSCTL
 
-//sys   sysctl(mib []_C_int, old *byte, oldlen *uintptr, new *byte, newlen uintptr) (err error) = SYS___SYSCTL
-
 func Uname(uname *Utsname) error {
 	mib := []_C_int{CTL_KERN, KERN_OSTYPE}
 	n := unsafe.Sizeof(uname.Sysname)
