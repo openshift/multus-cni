@@ -77,12 +77,18 @@ func postRequest(args *skel.CmdArgs) (*Response, string, error) {
 		return nil, "", fmt.Errorf("invalid CNI configuration passed to multus-shim: %w", err)
 	}
 
+	// check API readiness
+	if err := WaitUntilAPIReady(multusShimConfig.MultusSocketDir); err != nil {
+		return nil, multusShimConfig.CNIVersion, err
+	}
+
 	cniRequest, err := newCNIRequest(args)
 	if err != nil {
 		return nil, multusShimConfig.CNIVersion, err
 	}
 
-	body, err := DoCNI("http://dummy/cni", cniRequest, SocketPath(multusShimConfig.MultusSocketDir))
+	var body []byte
+	body, err = DoCNI("http://dummy/cni", cniRequest, SocketPath(multusShimConfig.MultusSocketDir))
 	if err != nil {
 		return nil, multusShimConfig.CNIVersion, err
 	}
