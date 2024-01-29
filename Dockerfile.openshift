@@ -19,7 +19,7 @@ RUN ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin
 WORKDIR /
 
-FROM registry.ci.openshift.org/ocp/4.16:base
+FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
 RUN mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/bin && \
        mkdir -p /usr/src/multus-cni/rhel9/bin && \
