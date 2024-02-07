@@ -1,0 +1,39 @@
+# This dockerfile is specific to building Multus for OpenShift
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16 AS rhel9
+ADD . /usr/src/multus-cni
+WORKDIR /usr/src/multus-cni
+ENV CGO_ENABLED=1
+ENV GO111MODULE=off
+ENV VERSION=rhel9 COMMIT=unset
+RUN ./hack/build-go.sh && \
+       cd /usr/src/multus-cni/bin
+WORKDIR /
+
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.21-openshift-4.16 AS rhel8
+ADD . /usr/src/multus-cni
+WORKDIR /usr/src/multus-cni
+ENV CGO_ENABLED=1
+ENV GO111MODULE=off
+ENV VERSION=rhel8 COMMIT=unset
+RUN ./hack/build-go.sh && \
+       cd /usr/src/multus-cni/bin
+WORKDIR /
+
+FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
+RUN mkdir -p /usr/src/multus-cni/images && \
+       mkdir -p /usr/src/multus-cni/bin && \
+       mkdir -p /usr/src/multus-cni/rhel9/bin && \
+       mkdir -p /usr/src/multus-cni/rhel8/bin
+COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel9/bin
+COPY --from=rhel8 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel8/bin
+# copy container base image binary to /usr/src/multus-cni/bin
+RUN bash -c '. /etc/os-release; \
+	cp /usr/src/multus-cni/rhel$(echo "${VERSION_ID}" | cut -f 1 -d .)/bin/* /usr/src/multus-cni/bin'
+ADD ./images/entrypoint.sh /
+
+LABEL io.k8s.display-name="Multus CNI" \
+      io.k8s.description="This is a component of OpenShift Container Platform and provides a meta CNI plugin." \
+      io.openshift.tags="openshift" \
+      maintainer="Doug Smith <dosmith@redhat.com>"
+
+ENTRYPOINT ["/entrypoint.sh"]
