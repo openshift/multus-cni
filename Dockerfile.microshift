@@ -1,0 +1,23 @@
+# This dockerfile is specific to building Multus for MicroShift
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16 AS rhel9
+ADD . /usr/src/multus-cni
+WORKDIR /usr/src/multus-cni
+ENV CGO_ENABLED=1
+ENV GO111MODULE=off
+ENV VERSION=rhel9 COMMIT=unset
+RUN ./hack/build-go.sh
+WORKDIR /
+
+FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
+RUN mkdir -p /usr/src/multus-cni/bin
+COPY --from=rhel9 \
+  /usr/src/multus-cni/bin/thin_entrypoint \
+  /usr/src/multus-cni/bin/multus \
+  /usr/src/multus-cni/bin
+
+LABEL io.k8s.display-name="Multus CNI for MicroShift" \
+      io.k8s.description="This is an optional component of MicroShift and provides a meta CNI plugin." \
+      io.openshift.tags="microshift" \
+      maintainer="Doug Smith <dosmith@redhat.com>"
+
+ENTRYPOINT ["/usr/src/multus-cni/bin/thin_entrypoint"]
