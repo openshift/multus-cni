@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 
@@ -64,7 +65,12 @@ func NewManagerWithExplicitPrimaryCNIPlugin(config MultusConf, multusAutoconfigD
 
 // overrideCNIVersion overrides cniVersion in cniConfigFile, it should be used only in kind case
 func overrideCNIVersion(cniConfigFile string, multusCNIVersion string) error {
-	masterCNIConfigData, err := os.ReadFile(cniConfigFile)
+	path, err := filepath.Abs(cniConfigFile)
+	if err != nil {
+		return fmt.Errorf("illegal path %s in cni config path %s: %w", path, cniConfigFile, err)
+	}
+
+	masterCNIConfigData, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read cni config %s: %v", cniConfigFile, err)
 	}
@@ -80,7 +86,7 @@ func overrideCNIVersion(cniConfigFile string, multusCNIVersion string) error {
 		return fmt.Errorf("couldn't update cluster network config: %v", err)
 	}
 
-	err = os.WriteFile(cniConfigFile, configBytes, 0644)
+	err = os.WriteFile(path, configBytes, 0644)
 	if err != nil {
 		return fmt.Errorf("couldn't update cluster network config: %v", err)
 	}

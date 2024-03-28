@@ -47,7 +47,7 @@ type fakeResourceServer struct {
 	server *grpc.Server
 }
 
-//TODO: This is stub code for test, but we may need to change for the testing we use this API in the future...
+// TODO: This is stub code for test, but we may need to change for the testing we use this API in the future...
 func (m *fakeResourceServer) GetAllocatableResources(ctx context.Context, req *podresourcesapi.AllocatableResourcesRequest) (*podresourcesapi.AllocatableResourcesResponse, error) {
 	return &podresourcesapi.AllocatableResourcesResponse{}, nil
 }
