@@ -229,12 +229,16 @@ func main() {
 }
 
 func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error {
-	srcFile, err := os.Open(multusConfigPath)
+	path, err := filepath.Abs(multusConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to open (READ only) file %s: %w", multusConfigPath, err)
+		return fmt.Errorf("illegal path %s in copyUserProvidedConfig: %w", multusConfigPath, err)
+	}
+	srcFile, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open (READ only) file %s: %w", path, err)
 	}
 
-	dstFileName := cniConfigDir + "/" + filepath.Base(multusConfigPath)
+	dstFileName := cniConfigDir + "/" + filepath.Base(path)
 	dstFile, err := os.Create(dstFileName)
 	if err != nil {
 		return fmt.Errorf("creating copying file %s: %w", dstFileName, err)
