@@ -281,7 +281,12 @@ func startMultusDaemon(configFilePath string, stopCh chan struct{}, done chan st
 }
 
 func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error {
-	srcFile, err := os.Open(multusConfigPath)
+	path, err := filepath.Abs(multusConfigPath)
+	if err != nil {
+		return fmt.Errorf("illegal path %s in multusConfigPath %s: %w", path, multusConfigPath, err)
+	}
+
+	srcFile, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("failed to open (READ only) file %s: %w", multusConfigPath, err)
 	}
