@@ -4,6 +4,7 @@
 exclude:
   global:
     - "**/*_test.go"
+    - vendor/github.com/containernetworking/cni/libcni
     - vendor/github.com/go-task/slim-sprig
     - vendor/github.com/google/uuid
     - vendor/github.com/onsi/ginkgo/v2/ginkgo/internal
