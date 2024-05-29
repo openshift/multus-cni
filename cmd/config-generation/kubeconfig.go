@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -87,7 +88,11 @@ func main() {
 }
 
 func k8sCAFileContentsBase64(pathCAFile string) (string, error) {
-	data, err := ioutil.ReadFile(pathCAFile)
+	path, err := filepath.Abs(pathCAFile)
+	if err != nil {
+		return "", fmt.Errorf("illegal path %s in k8sCAFileContentsBase64: %w", pathCAFile, err)
+	}
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("failed reading file %s: %w", pathCAFile, err)
 	}
@@ -103,6 +108,10 @@ func k8sKubeConfigToken(tokenPath string) (string, error) {
 }
 
 func writeKubeConfig(outputPath string, protocol string, k8sServiceIP string, k8sServicePort int, tlsConfig string, serviceAccountToken string) error {
+	path, err := filepath.Abs(outputPath)
+	if err != nil {
+		return fmt.Errorf("illegal path %s in writeKubeConfig: %w", outputPath, err)
+	}
 	kubeConfigTemplate := `
 # Kubeconfig file for Multus CNI plugin.
 apiVersion: v1
@@ -125,7 +134,7 @@ current-context: multus-context
 `
 	kubeconfig := fmt.Sprintf(kubeConfigTemplate, protocol, k8sServiceIP, k8sServicePort, tlsConfig, serviceAccountToken)
 	logInfo("Generated KubeConfig saved to %s: \n%s", outputPath, kubeconfig)
-	return ioutil.WriteFile(outputPath, []byte(kubeconfig), userRWPermission)
+	return ioutil.WriteFile(path, []byte(kubeconfig), userRWPermission)
 }
 
 func prepareCNIConfigDir(cniConfigDirPath string) error {
