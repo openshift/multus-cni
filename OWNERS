@@ -1,17 +1,16 @@
 reviewers:
   - dougbtv
-  - dcbw
-  - squeed
   - zshi
   - fepan
   - s1061123
-  - nicklesimba
+  - bpickard22
+  - pliurh
 approvers:
   - dougbtv
-  - dcbw
-  - squeed
   - zshi
   - fepan
   - s1061123
+  - bpickard22
+  - pliurh
 component: "Networking"
 subcomponent: "multus"
