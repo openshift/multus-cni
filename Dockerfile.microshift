@@ -9,7 +9,8 @@ RUN ./hack/build-go.sh
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
-RUN mkdir -p /usr/src/multus-cni/bin
+RUN dnf install -y util-linux && dnf clean all && \
+    mkdir -p /usr/src/multus-cni/bin
 COPY --from=rhel9 \
   /usr/src/multus-cni/bin/thin_entrypoint \
   /usr/src/multus-cni/bin/multus \
