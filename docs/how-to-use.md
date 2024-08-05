@@ -126,7 +126,7 @@ Create kubeconfig at master node as following commands:
 mkdir -p /etc/cni/net.d/multus.d
 SERVICEACCOUNT_CA=$(kubectl get secrets -n=kube-system -o json | jq -r '.items[]|select(.metadata.annotations."kubernetes.io/service-account.name"=="multus")| .data."ca.crt"')
 SERVICEACCOUNT_TOKEN=$(kubectl get secrets -n=kube-system -o json | jq -r '.items[]|select(.metadata.annotations."kubernetes.io/service-account.name"=="multus")| .data.token' | base64 -d )
-KUBERNETES_SERVICE_PROTO=$(kubectl get all -o json | jq -r .items[0].spec.ports[0].name)
+KUBERNETES_SERVICE_PROTOCOL=$(kubectl get all -o json | jq -r .items[0].spec.ports[0].name)
 KUBERNETES_SERVICE_HOST=$(kubectl get all -o json | jq -r .items[0].spec.clusterIP)
 KUBERNETES_SERVICE_PORT=$(kubectl get all -o json | jq -r .items[0].spec.ports[0].port)
 cat > /etc/cni/net.d/multus.d/multus.kubeconfig <<EOF
@@ -511,7 +511,7 @@ spec:
 EOF
 ```
 
-We can then create a pod which uses the `default-route` key in the JSON formatted `k8s.v1.cni.cncf.io/networks` annotation. 
+We can then create a pod which uses the `default-route` key in the JSON formatted `k8s.v1.cni.cncf.io/networks` annotation.
 
 ```
 cat <<EOF | kubectl create -f -
@@ -537,9 +537,9 @@ This will set `192.168.2.1` as the default route over the `net1` interface, such
 ```
 kubectl exec -it samplepod -- ip route
 
-default via 192.168.2.1 dev net1 
-10.244.0.0/24 dev eth0  proto kernel  scope link  src 10.244.0.169 
-10.244.0.0/16 via 10.244.0.1 dev eth0 
+default via 192.168.2.1 dev net1
+10.244.0.0/24 dev eth0  proto kernel  scope link  src 10.244.0.169
+10.244.0.0/16 via 10.244.0.1 dev eth0
 ```
 
 ## Entrypoint Parameters
@@ -551,7 +551,7 @@ Typically, you'd modified the daemonset YAML itself to specify these parameters.
 For example, the `command` and `args` parameters in the `containers` section of the DaemonSet may look something like:
 
 ```
-  command: ["/entrypoint.sh"]
+  command: ["/thin_entrypoint"]
   args:
   - "--multus-conf-file=auto"
   - "--namespace-isolation=true"
@@ -590,7 +590,7 @@ The `--multus-conf-file` is one of two options; it can be set to a source file t
 
 The automatic configuration option is used to automatically generate Multus configurations given existing on-disk CNI configurations for your default network.
 
-In the case that `--multus-conf-file=auto` -- The entrypoint script will look at the `--multus-autoconfig-dir` (by default, the same as the `--cni-conf-dir`). Multus will wait (600 seconds) until there's a CNI configuration file there, and it will take the alphabetically first configuration there, and it will wrap that configuration into a Multus configuration.
+In the case that `--multus-conf-file=auto` -- The entrypoint script will look at the `--multus-autoconfig-dir` (by default, the same as the `--cni-conf-dir`). Multus will take the alphabetically first configuration there and wrap that into a Multus configuration.
 
     --multus-autoconfig-dir=/host/etc/cni/net.d
 
@@ -619,6 +619,14 @@ In some cases, the original CNI configuration that the Multus configuration was 
 
     --cleanup-config-on-exit=true
 
+When specifying `--cleanup-config-on-exit=true` the entrypoint script will delete any generated/copied Multus configuration files when entrypoint script
+exits (upon Pod termination). This allows Multus to be safely removed from the cluster when its no longer needed.
+
+In addition, when both `--cleanup-config-on-exit=true` and `--multus-conf-file=auto` are specified, the entrypoint script will watch for changes of the
+master CNI configuration and kubeconfig. when such change detected, the script will re-genereate Multus configuration. Watch can be skipped by setting:
+
+    --skip-config-watch
+
 Additionally when using CRIO, you may wish to have the CNI config file that's used as the source for `--multus-conf-file=auto` renamed. This boolean option when set to true automatically renames the file with a `.old` suffix to the original filename.
 
     --rename-conf-file=true
@@ -634,3 +642,126 @@ Sometimes, you may wish to not have the entrypoint copy the binary file onto the
 If you wish to have auto configuration use the `readinessindicatorfile` in the configuration, you can use the `--readiness-indicator-file` to express which file should be used as the readiness indicator.
 
     --readiness-indicator-file=/path/to/file
+
+### Run pod with network annotation and Dynamic Resource Allocation driver
+
+> :warning: Dynamic Resource Allocation (DRA) is [currently an alpha](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/),
+> and is subject to change. Please consider this functionality as a preview. The architecture and usage of DRA in
+> Multus CNI may change in the future as this technology matures.
+>
+> The current DRA integration is based on the DRA API for Kubernetes 1.26 to 1.30. With Kubernetes 1.31, the DRA API
+> will change and multus doesn't integrate with the new API yet.
+
+Dynamic Resource Allocation is alternative mechanism to device plugin which allows to requests pod and container
+resources.
+
+The following sections describe how to use DRA with multus and NVIDIA DRA driver. Other DRA networking driver vendors
+should follow similar concepts to make use of multus DRA support.
+
+#### Prerequisite
+
+1. Kubernetes 1.27
+2. Container Runtime with CDI support enabled
+3. Kubernetes runtime-config=resource.k8s.io/v1alpha2
+4. Kubernetes feature-gates=DynamicResourceAllocation=True,KubeletPodResourcesDynamicResources=true
+
+#### Install DRA driver
+
+The current example uses NVIDIA DRA driver for networking. This DRA driver is not publicly available. An alternative to
+this DRA driver is available at [dra-example-driver](https://github.com/kubernetes-sigs/dra-example-driver).
+
+#### Create dynamic resource class with NVIDIA network DRA driver
+
+The `ResourceClass` defines the resource pool of `sf-pool-1`.
+
+```
+# Execute following command at Kubernetes master
+cat <<EOF | kubectl create -f -
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClass
+metadata:
+  name: sf-pool-1
+driverName: net.resource.nvidia.com
+EOF
+```
+
+#### Create network attachment definition with resource name
+
+The `k8s.v1.cni.cncf.io/resourceName` should match the `ResourceClass` name defined in the section above.
+In this example it is `sf-pool-1`. Multus query the K8s PodResource API to fetch the `resourceClass` name and also
+query the NetworkAttachmentDefinition `k8s.v1.cni.cncf.io/resourceName`. If both has the same name multus send the
+CDI device name in the DeviceID argument.
+
+##### NetworkAttachmentDefinition for ovn-kubernetes example:
+
+Following command creates NetworkAttachmentDefinition. CNI config is in `config:` field.
+
+```
+# Execute following command at Kubernetes master
+cat <<EOF | kubectl create -f -
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: default
+  annotations:
+    k8s.v1.cni.cncf.io/resourceName: sf-pool-1
+spec:
+  config: '{
+      "cniVersion": "0.4.0",
+      "dns": {},
+      "ipam": {},
+      "logFile": "/var/log/ovn-kubernetes/ovn-k8s-cni-overlay.log",
+      "logLevel": "4",
+      "logfile-maxage": 5,
+      "logfile-maxbackups": 5,
+      "logfile-maxsize": 100,
+      "name": "ovn-kubernetes",
+      "type": "ovn-k8s-cni-overlay"
+    }'
+EOF
+```
+
+#### Create DRA Resource Claim
+
+Following command creates `ResourceClaim` `sf` which request resource from  `ResourceClass` `sf-pool-1`.
+
+```
+# Execute following command at Kubernetes master
+cat <<EOF | kubectl create -f -
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClaim
+metadata:
+  namespace: default
+  name: sf
+spec:
+  spec:
+    resourceClassName: sf-pool-1
+EOF
+```
+
+#### Launch pod with DRA Resource Claim
+
+Following command Launch a Pod with primiry network `default` and `ResourceClaim` `sf`.
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: test-sf-claim
+  annotations:
+    v1.multus-cni.io/default-network: default
+spec:
+  restartPolicy: Always
+  containers:
+  - name: with-resource
+    image: docker.io/library/ubuntu:22.04
+    command: ["/bin/sh", "-ec", "while :; do echo '.'; sleep 5 ; done"]
+    resources:
+      claims:
+      - name: resource
+  resourceClaims:
+  - name: resource
+    source:
+      resourceClaimName: sf
+```
