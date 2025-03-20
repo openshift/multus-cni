@@ -767,10 +767,12 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 		if !types.CheckSystemNamespaces(string(k8sArgs.K8S_POD_NAME), n.SystemNamespaces) {
 			err = k8s.SetNetworkStatus(kubeClient, k8sArgs, netStatus, n)
 			if err != nil {
-				if strings.Contains(err.Error(), "failed to query the pod") {
-					return nil, cmdErr(k8sArgs, "error setting the networks status, pod was already deleted: %v", err)
+				if strings.Contains(err.Error(), "failed to query the pod") || strings.Contains(err.Error(), "failed to update the pod") {
+					// Tolerate issues with writing the status, as these are often from pods that are rapidly deleted. However, log them.
+					logging.Verbosef("warning: tolerated failure writing network status: %v", err)
+				} else {
+					return nil, cmdErr(k8sArgs, "error setting the networks status: %v", err)
 				}
-				return nil, cmdErr(k8sArgs, "error setting the networks status: %v", err)
 			}
 		}
 	}
