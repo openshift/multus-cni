@@ -85,15 +85,15 @@ jobs:
         working-directory: ./e2e
         run: ./test-default-route1.sh
 
-#      - name: Test DRA integration
-#        working-directory: ./e2e
-#        run: ./test-dra-integration.sh
+      - name: Test DRA integration
+        working-directory: ./e2e
+        run: ./test-dra-integration.sh
 
       - name: Export kind logs
         if: always()
         run: |
           mkdir -p /tmp/kind/logs
-          kind export logs /tmp/kind/logs -v 2147483647
+          kind export logs --loglevel=debug /tmp/kind/logs
 
       - name: Upload kind logs
         if: always()
