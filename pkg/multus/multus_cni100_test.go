@@ -18,6 +18,7 @@ package multus
 //revive:disable:dot-imports
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,11 +27,13 @@ import (
 	"time"
 
 	"github.com/containernetworking/cni/pkg/skel"
+	cnitypes "github.com/containernetworking/cni/pkg/types"
 	cni100 "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
 	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/testing"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -1242,6 +1245,79 @@ var _ = Describe("multus operations cniVersion 1.1.0 config", func() {
 		Expect(err).NotTo(HaveOccurred())
 		// we only execute once for cluster network, not additional one
 		Expect(fExec.statusIndex).To(Equal(1))
+	})
+
+	It("propagates delegate STATUS errors", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+		}
+		k8sArgs := &types.K8sArgs{
+			K8S_POD_NAMESPACE:          cnitypes.UnmarshallableString("default"),
+			K8S_POD_NAME:               cnitypes.UnmarshallableString("pod"),
+			K8S_POD_INFRA_CONTAINER_ID: cnitypes.UnmarshallableString("sandbox"),
+			K8S_POD_UID:                cnitypes.UnmarshallableString("uid"),
+		}
+
+		delegateConf, err := types.LoadDelegateNetConf([]byte(`{
+	    "name": "weave1",
+	    "cniVersion": "1.1.0",
+	    "type": "weave-net"
+	}`), nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		rt, _ := types.CreateCNIRuntimeConf(args, k8sArgs, args.IfName, nil, delegateConf)
+
+		fExec := newFakeExec()
+		expectedConf := `{
+	    "name": "weave1",
+	    "cniVersion": "1.1.0",
+	    "type": "weave-net"
+	}`
+		fExec.addPlugin100(nil, "", expectedConf, nil, &cnitypes.Error{Code: 50, Msg: "status failed"})
+
+		err = DelegateStatus(fExec, delegateConf, rt, &types.NetConf{BinDir: "/bin", CNIDir: tmpDir})
+		Expect(err).To(HaveOccurred())
+		var cniErr *cnitypes.Error
+		Expect(errors.As(err, &cniErr)).To(BeTrue())
+		Expect(cniErr.Code).To(Equal(uint(50)))
+		Expect(cniErr.Msg).To(Equal("status failed"))
+	})
+
+	It("propagates CmdStatus errors for single plugin delegates", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+			StdinData: []byte(`{
+	    "name": "node-cni-network",
+	    "type": "multus",
+	    "defaultnetworkfile": "/tmp/foo.multus.conf",
+	    "defaultnetworkwaitseconds": 3,
+	    "delegates": [{
+	        "name": "weave1",
+	        "cniVersion": "1.1.0",
+	        "type": "weave-net"
+	    }]
+	}`),
+		}
+
+		logging.SetLogLevel("verbose")
+
+		fExec := newFakeExec()
+		expectedConf := `{
+	    "name": "weave1",
+	    "cniVersion": "1.1.0",
+	    "type": "weave-net"
+	}`
+		fExec.addPlugin100(nil, "", expectedConf, nil, &cnitypes.Error{Code: 50, Msg: "status failed"})
+
+		err := CmdStatus(args, fExec, nil)
+		Expect(err).To(HaveOccurred())
+		var cniErr *cnitypes.Error
+		Expect(errors.As(err, &cniErr)).To(BeTrue())
+		Expect(cniErr.Code).To(Equal(uint(50)))
+		Expect(cniErr.Msg).To(Equal("status failed"))
 	})
 
 	It("executes delegates with CNI GC", func() {
