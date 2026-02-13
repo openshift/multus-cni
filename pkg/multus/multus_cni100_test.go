@@ -1247,6 +1247,36 @@ var _ = Describe("multus operations cniVersion 1.1.0 config", func() {
 		Expect(fExec.statusIndex).To(Equal(1))
 	})
 
+	It("returns empty add result using top-level cniVersion when pod is not found", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+			Args:        "K8S_POD_NAME=missing-pod;K8S_POD_NAMESPACE=default",
+			StdinData: []byte(`{
+	    "name": "node-cni-network",
+	    "type": "multus",
+	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	    "cniVersion": "1.1.0",
+	    "delegates": [{
+	        "name": "weave1",
+	        "cniVersion": "1.1.0",
+	        "type": "weave-net"
+	    }]
+	}`),
+		}
+
+		fExec := newFakeExec()
+		fKubeClient := NewFakeClientInfo()
+
+		result, err := CmdAdd(args, fExec, fKubeClient)
+		Expect(err).NotTo(HaveOccurred())
+		r, ok := result.(*cni100.Result)
+		Expect(ok).To(BeTrue())
+		Expect(r.CNIVersion).To(Equal("1.1.0"))
+		Expect(fExec.addIndex).To(Equal(0))
+	})
+
 	It("propagates delegate STATUS errors", func() {
 		args := &skel.CmdArgs{
 			ContainerID: "123456789",
