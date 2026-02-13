@@ -764,10 +764,10 @@ func CmdAdd(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) (c
 
 	pod, err := GetPod(kubeClient, k8sArgs, false)
 	if err != nil {
-		if err == errPodNotFound {
-			emptyresult := emptyCNIResult(args, "1.0.0")
-			logging.Verbosef("CmdAdd: Warning: pod [%s/%s] not found, exiting with empty CNI result: %v", k8sArgs.K8S_POD_NAMESPACE, k8sArgs.K8S_POD_NAME, emptyresult)
-			return emptyresult, nil
+		if stderrors.Is(err, errPodNotFound) {
+			emptyResult := emptyCNIResult(args, n.CNIVersion)
+			logging.Verbosef("CmdAdd: Warning: pod [%s/%s] not found, exiting with empty CNI result: %v", k8sArgs.K8S_POD_NAMESPACE, k8sArgs.K8S_POD_NAME, emptyResult)
+			return emptyResult, nil
 		}
 		return nil, err
 	}
