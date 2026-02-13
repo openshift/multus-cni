@@ -1215,9 +1215,28 @@ func CmdGC(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) err
 	binDirs = append([]string{n.BinDir}, binDirs...)
 	cniNet := libcni.NewCNIConfigWithCacheDir(binDirs, n.CNIDir, exec)
 
-	conf, err := libcni.ConfListFromBytes(n.Delegates[0].Bytes)
-	if err != nil {
-		return logging.Errorf("error in converting the raw bytes to conf: %v", err)
+	delegate := n.Delegates[0]
+	isConfList := delegate.ConfListPlugin
+	if !isConfList && delegate.Conf.Type == "" && delegate.ConfList.Name != "" {
+		isConfList = true
+	}
+
+	var confList *libcni.NetworkConfigList
+	if isConfList {
+		confList, err = libcni.ConfListFromBytes(delegate.Bytes)
+		if err != nil {
+			return logging.Errorf("error in converting the raw bytes to conf: %v", err)
+		}
+	} else {
+		conf, err := libcni.ConfFromBytes(delegate.Bytes)
+		if err != nil {
+			return logging.Errorf("error in converting the raw bytes to conf: %v", err)
+		}
+		confList = &libcni.NetworkConfigList{
+			Name:       conf.Network.Name,
+			CNIVersion: conf.Network.CNIVersion,
+			Plugins:    []*libcni.PluginConfig{conf},
+		}
 	}
 
 	validAttachments, err := gatherValidAttachmentsFromCache(n.CNIDir)
@@ -1225,7 +1244,7 @@ func CmdGC(args *skel.CmdArgs, exec invoke.Exec, kubeClient *k8s.ClientInfo) err
 		return logging.Errorf("error in gather valid attachments: %v", err)
 	}
 
-	err = cniNet.GCNetworkList(context.TODO(), conf, &libcni.GCArgs{
+	err = cniNet.GCNetworkList(context.TODO(), confList, &libcni.GCArgs{
 		ValidAttachments: validAttachments,
 	})
 	if err != nil {

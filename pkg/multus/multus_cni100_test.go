@@ -1428,4 +1428,42 @@ var _ = Describe("multus operations cniVersion 1.1.0 config", func() {
 		err = os.RemoveAll(tmpCNIDir)
 		Expect(err).NotTo(HaveOccurred())
 	})
+
+	It("executes single plugin delegates with CNI GC", func() {
+		tmpCNIDir := tmpDir + "/cniData-single"
+		err := os.Mkdir(tmpCNIDir, 0777)
+		Expect(err).NotTo(HaveOccurred())
+
+		cniCacheDir := filepath.Join(tmpCNIDir, "/results")
+		err = os.Mkdir(cniCacheDir, 0777)
+		Expect(err).NotTo(HaveOccurred())
+
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+			StdinData: []byte(fmt.Sprintf(`{
+	    "name": "node-cni-network",
+	    "type": "multus",
+	    "defaultnetworkfile": "/tmp/foo.multus.conf",
+	    "defaultnetworkwaitseconds": 3,
+	    "cniDir": "%s",
+	    "delegates": [{
+	        "name": "weave1",
+	        "cniVersion": "1.1.0",
+	        "type": "weave-net"
+	    }]
+	}`, tmpCNIDir)),
+		}
+
+		fExec := newFakeExec()
+		fExec.addPlugin100(nil, "", "", nil, nil)
+
+		err = CmdGC(args, fExec, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fExec.gcIndex).To(Equal(1))
+
+		err = os.RemoveAll(tmpCNIDir)
+		Expect(err).NotTo(HaveOccurred())
+	})
 })
