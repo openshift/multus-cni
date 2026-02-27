@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/blang/semver"
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
@@ -166,28 +167,16 @@ func deleteDefaultGWResultRoutes(routes []interface{}, dstGW string) ([]interfac
 }
 
 func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[string]interface{}, error) {
-	// try to get cniVersion from result
-	_, ok := result["cniVersion"]
-	if !ok {
-		// fallback to processing result for old cni version(0.1.0/0.2.0)
+	isOldFormat, err := validateAndGetCNIVersion(result)
+	if err != nil {
+		return nil, err
+	}
+
+	if isOldFormat {
 		return deleteDefaultGWResult020(result, ipv4, ipv6)
 	}
 
-	cniVersion, ok := result["cniVersion"].(string)
-	if !ok {
-		return nil, fmt.Errorf("wrong cniVersion format: %v", result["cniVersion"])
-	}
-
-	if cniVersion == "0.1.0" || cniVersion == "0.2.0" {
-		// fallback to processing result for old cni version(0.1.0/0.2.0)
-		return deleteDefaultGWResult020(result, ipv4, ipv6)
-	}
-
-	if cniVersion != "0.3.0" && cniVersion != "0.3.1" && cniVersion != "0.4.0" && cniVersion != "1.0.0" {
-		return nil, fmt.Errorf("not supported version: %s", cniVersion)
-	}
-
-	_, ok = result["routes"]
+	_, ok := result["routes"]
 	if !ok {
 		// No route in result, hence we do nothing
 		return result, nil
@@ -197,7 +186,6 @@ func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[
 		return nil, fmt.Errorf("wrong routes format: %v", result["routes"])
 	}
 
-	var err error
 	// delete IPv4 default routes
 	if ipv4 {
 		routes, err = deleteDefaultGWResultRoutes(routes, "0.0.0.0/0")
@@ -323,29 +311,17 @@ func addDefaultGWCacheBytes(cacheFile []byte, gw []net.IP) ([]byte, error) {
 }
 
 func addDefaultGWResult(result map[string]interface{}, gw []net.IP) (map[string]interface{}, error) {
-	// try to get cniVersion from result
-	_, ok := result["cniVersion"]
-	if !ok {
-		// fallback to processing result for old cni version(0.1.0/0.2.0)
+	isOldFormat, err := validateAndGetCNIVersion(result)
+	if err != nil {
+		return nil, err
+	}
+
+	if isOldFormat {
 		return addDefaultGWResult020(result, gw)
-	}
-
-	cniVersion, ok := result["cniVersion"].(string)
-	if !ok {
-		return nil, fmt.Errorf("wrong cniVersion format: %v", result["cniVersion"])
-	}
-
-	if cniVersion == "0.1.0" || cniVersion == "0.2.0" {
-		// fallback to processing result for old cni version(0.1.0/0.2.0)
-		return addDefaultGWResult020(result, gw)
-	}
-
-	if cniVersion != "0.3.0" && cniVersion != "0.3.1" && cniVersion != "0.4.0" && cniVersion != "1.0.0" {
-		return nil, fmt.Errorf("not supported version: %s", cniVersion)
 	}
 
 	routes := []interface{}{}
-	_, ok = result["routes"]
+	_, ok := result["routes"]
 	if ok {
 		routes, ok = result["routes"].([]interface{})
 		if !ok {
@@ -413,4 +389,40 @@ func addDefaultGWResult020(result map[string]interface{}, gw []net.IP) (map[stri
 		}
 	}
 	return result, nil
+}
+
+// validateAndGetCNIVersion extracts and validates the CNI version from a result.
+// Returns whether it's an old format version (< 0.3.0), and any error.
+//
+// CNI spec 0.3.0 introduced a breaking change in the Result structure:
+// - Versions < 0.3.0 used "ip4"/"ip6" fields with routes nested inside each
+// - Versions >= 0.3.0 use a unified "ip" array and top-level "routes" field
+//
+// See: https://github.com/containernetworking/cni/blob/main/Documentation/spec-upgrades.md
+// Spec 0.2.0: https://github.com/containernetworking/cni/blob/spec-v0.2.0/SPEC.md
+// Spec 0.3.0: https://github.com/containernetworking/cni/blob/spec-v0.3.0/SPEC.md
+func validateAndGetCNIVersion(result map[string]interface{}) (bool, error) {
+	versionRaw, ok := result["cniVersion"]
+	if !ok {
+		// Missing version implies old format (0.1.0/0.2.0)
+		return true, nil
+	}
+
+	cniVersion, ok := versionRaw.(string)
+	if !ok {
+		return false, fmt.Errorf("wrong cniVersion format: %v", versionRaw)
+	}
+
+	v, err := semver.Make(cniVersion)
+	if err != nil {
+		return false, fmt.Errorf("invalid CNI version %s: %v", cniVersion, err)
+	}
+
+	// Format changed at 0.3.0
+	v030, _ := semver.Make("0.3.0")
+	if v.LT(v030) {
+		return true, nil // old format
+	}
+
+	return false, nil // modern format (>= 0.3.0)
 }
