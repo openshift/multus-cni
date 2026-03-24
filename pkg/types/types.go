@@ -183,9 +183,10 @@ type ResourceInfo struct {
 // order is deterministic across GetPodResourceMap callers (e.g. Multus and OVN-Kubernetes).
 func SortDeviceIDs(resourceMap map[string]*ResourceInfo) {
 	for _, rInfo := range resourceMap {
-		if rInfo.DeviceIDs != nil {
-			sort.Strings(rInfo.DeviceIDs)
+		if rInfo == nil {
+			continue
 		}
+		sort.Strings(rInfo.DeviceIDs)
 	}
 }
 
