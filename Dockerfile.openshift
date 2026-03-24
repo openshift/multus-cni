@@ -1,4 +1,16 @@
 # This dockerfile is specific to building Multus for OpenShift
+# rhel10 golang builders don't exist yet, so use rhel9 for now
+# replace with rhel10 golang builder when it is released
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.22 AS rhel10
+ADD . /usr/src/multus-cni
+WORKDIR /usr/src/multus-cni
+ENV CGO_ENABLED=1
+ENV GO111MODULE=off
+ENV VERSION=rhel10 COMMIT=unset
+RUN ./hack/build-go.sh && \
+       cd /usr/src/multus-cni/bin
+WORKDIR /
+
 FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.22 AS rhel9
 ADD . /usr/src/multus-cni
 WORKDIR /usr/src/multus-cni
@@ -40,3 +52,4 @@ LABEL io.k8s.display-name="Multus CNI" \
       maintainer="Doug Smith <dosmith@redhat.com>"
 
 ENTRYPOINT ["/entrypoint.sh"]
+
