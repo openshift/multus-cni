@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -83,6 +84,7 @@ func printCmdArgs(args *skel.CmdArgs) string {
 
 // HandleCNIRequest is the CNI server handler function; it is invoked whenever
 // a CNI request is processed.
+// Note: k8sArgs may be nil for plugin-level commands (STATUS, GC) that have no pod context.
 func (s *Server) HandleCNIRequest(cmd string, k8sArgs *types.K8sArgs, cniCmdArgs *skel.CmdArgs) ([]byte, error) {
 	var result []byte
 	var err error
@@ -125,6 +127,8 @@ func (s *Server) HandleDelegateRequest(cmd string, k8sArgs *types.K8sArgs, cniCm
 		err = s.cmdDelegateDel(cniCmdArgs, k8sArgs, multusConfig)
 	case "CHECK":
 		err = s.cmdDelegateCheck(cniCmdArgs, k8sArgs, multusConfig)
+	case "STATUS":
+		err = s.cmdDelegateStatus(cniCmdArgs, k8sArgs, multusConfig)
 	default:
 		return []byte(""), fmt.Errorf("unknown cmd type: %s", cmd)
 	}
@@ -302,7 +306,7 @@ func newCNIServer(rundir string, kubeClient *k8s.ClientInfo, exec invoke.Exec, s
 
 			result, err := s.handleCNIRequest(r)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+				s.writeCNIErrorResponse(w, err)
 				return
 			}
 
@@ -324,7 +328,7 @@ func newCNIServer(rundir string, kubeClient *k8s.ClientInfo, exec invoke.Exec, s
 
 			result, err := s.handleDelegateRequest(r)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+				s.writeCNIErrorResponse(w, err)
 				return
 			}
 
@@ -406,6 +410,34 @@ func (s *Server) Start(ctx context.Context, l net.Listener) {
 	}()
 }
 
+func (s *Server) writeCNIErrorResponse(w http.ResponseWriter, err error) {
+	var cniErr *cnitypes.Error
+	if errors.As(err, &cniErr) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		errBytes, marshalErr := json.Marshal(cniErr)
+		if marshalErr != nil {
+			http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+			return
+		}
+		if _, writeErr := w.Write(errBytes); writeErr != nil {
+			_ = logging.Errorf("Error writing HTTP response: %v", writeErr)
+		}
+		return
+	}
+	http.Error(w, fmt.Sprintf("%v", err), http.StatusBadRequest)
+}
+
+func (s *Server) wrapCNIRequestError(cmdArgs *skel.CmdArgs, err error) error {
+	var cniErr *cnitypes.Error
+	if errors.As(err, &cniErr) {
+		_ = logging.Errorf("%s ERRORED: %v", printCmdArgs(cmdArgs), err)
+		return err
+	}
+	// Prefix error with request information for easier debugging.
+	return fmt.Errorf("%s ERRORED: %v", printCmdArgs(cmdArgs), err)
+}
+
 func (s *Server) handleCNIRequest(r *http.Request) ([]byte, error) {
 	var cr api.Request
 	b, err := io.ReadAll(r.Body)
@@ -420,15 +452,19 @@ func (s *Server) handleCNIRequest(r *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("could not extract the CNI command args: %w", err)
 	}
 
-	k8sArgs, err := kubernetesRuntimeArgs(cr.Env, s.kubeclient)
-	if err != nil {
-		return nil, fmt.Errorf("could not extract the kubernetes runtime args: %w", err)
+	// STATUS and GC are plugin-level commands with no pod context,
+	// so they don't have K8S_POD_NAME/K8S_POD_NAMESPACE in CNI_ARGS.
+	var k8sArgs *types.K8sArgs
+	if cmdType != "STATUS" && cmdType != "GC" {
+		k8sArgs, err = kubernetesRuntimeArgs(cr.Env, s.kubeclient)
+		if err != nil {
+			return nil, fmt.Errorf("could not extract the kubernetes runtime args: %w", err)
+		}
 	}
 
 	result, err := s.HandleCNIRequest(cmdType, k8sArgs, cniCmdArgs)
 	if err != nil {
-		// Prefix error with request information for easier debugging
-		return nil, fmt.Errorf("%s ERRORED: %v", printCmdArgs(cniCmdArgs), err)
+		return nil, s.wrapCNIRequestError(cniCmdArgs, err)
 	}
 	return result, nil
 }
@@ -454,8 +490,7 @@ func (s *Server) handleDelegateRequest(r *http.Request) ([]byte, error) {
 
 	result, err := s.HandleDelegateRequest(cmdType, k8sArgs, cniCmdArgs, cr.InterfaceAttributes)
 	if err != nil {
-		// Prefix error with request information for easier debugging
-		return nil, fmt.Errorf("%s ERRORED: %v", printCmdArgs(cniCmdArgs), err)
+		return nil, s.wrapCNIRequestError(cniCmdArgs, err)
 	}
 	return result, nil
 }
@@ -502,6 +537,18 @@ func (s *Server) extractCniData(cniRequest *api.Request, overrideConf []byte) (s
 	}
 
 	cniCmdArgs := &skel.CmdArgs{}
+
+	// STATUS and GC are plugin-level commands with no pod context;
+	// they don't require CNI_CONTAINERID, CNI_NETNS, or CNI_ARGS.
+	if cmd == "STATUS" || cmd == "GC" {
+		var err error
+		cniCmdArgs.StdinData, err = overrideCNIConfigWithServerConfig(cniRequest.Config, overrideConf, s.ignoreReadinessIndicator)
+		if err != nil {
+			return "", nil, err
+		}
+		return cmd, cniCmdArgs, nil
+	}
+
 	cniCmdArgs.ContainerID, ok = cniRequest.Env["CNI_CONTAINERID"]
 	if !ok {
 		return "", nil, fmt.Errorf("missing CNI_CONTAINERID")
@@ -635,25 +682,13 @@ func (s *Server) cmdCheck(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs) error {
 	return multus.CmdCheck(cmdArgs, s.exec, s.kubeclient)
 }
 
-func (s *Server) cmdGC(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs) error {
-	namespace := string(k8sArgs.K8S_POD_NAMESPACE)
-	podName := string(k8sArgs.K8S_POD_NAME)
-	if namespace == "" || podName == "" {
-		return fmt.Errorf("required CNI variable missing. pod name: %s; pod namespace: %s", podName, namespace)
-	}
-
-	logging.Debugf("CmdGC for [%s/%s]. CNI conf: %+v", namespace, podName, *cmdArgs)
+func (s *Server) cmdGC(cmdArgs *skel.CmdArgs, _ *types.K8sArgs) error {
+	logging.Debugf("CmdGC. CNI conf: %+v", *cmdArgs)
 	return multus.CmdGC(cmdArgs, s.exec, s.kubeclient)
 }
 
-func (s *Server) cmdStatus(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs) error {
-	namespace := string(k8sArgs.K8S_POD_NAMESPACE)
-	podName := string(k8sArgs.K8S_POD_NAME)
-	if namespace == "" || podName == "" {
-		return fmt.Errorf("required CNI variable missing. pod name: %s; pod namespace: %s", podName, namespace)
-	}
-
-	logging.Debugf("CmdStatus for [%s/%s]. CNI conf: %+v", namespace, podName, *cmdArgs)
+func (s *Server) cmdStatus(cmdArgs *skel.CmdArgs, _ *types.K8sArgs) error {
+	logging.Debugf("CmdStatus. CNI conf: %+v", *cmdArgs)
 	return multus.CmdStatus(cmdArgs, s.exec, s.kubeclient)
 }
 
@@ -720,6 +755,15 @@ func (s *Server) cmdDelegateCheck(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs,
 	delegateCNIConf.Bytes = cmdArgs.StdinData
 	rt, _ := types.CreateCNIRuntimeConf(cmdArgs, k8sArgs, cmdArgs.IfName, nil, delegateCNIConf)
 	return multus.DelegateCheck(s.exec, delegateCNIConf, rt, multusConfig)
+}
+
+func (s *Server) cmdDelegateStatus(cmdArgs *skel.CmdArgs, k8sArgs *types.K8sArgs, multusConfig *types.NetConf) error {
+	delegateCNIConf, err := types.LoadDelegateNetConf(cmdArgs.StdinData, nil, "", "")
+	if err != nil {
+		return err
+	}
+	rt, _ := types.CreateCNIRuntimeConf(cmdArgs, k8sArgs, cmdArgs.IfName, nil, delegateCNIConf)
+	return multus.DelegateStatus(s.exec, delegateCNIConf, rt, multusConfig)
 }
 
 // note: this function may send back error to the client. In cni spec, command DEL should NOT send any error
