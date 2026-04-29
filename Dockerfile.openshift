@@ -9,22 +9,18 @@ RUN ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin
 WORKDIR /
 
-# To add a new RHEL version (e.g. rhel10):
-# 1. Add a builder stage above (FROM ... AS rhel10, ENV VERSION=rhel10)
-# 2. Add a COPY line below (COPY --from=rhel10 ... /usr/src/multus-cni/rhel10/bin)
-# OS detection will automatically prefer the version-specific binary if available.
+# To add a new RHEL version with distinct binaries:
+# 1. Add a builder stage above (FROM ... AS rhel<N>, ENV VERSION=rhel<N>)
+# 2. Replace the hardlink below with a COPY --from=rhel<N> for that version's bin dir
 FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
 RUN dnf install -y util-linux && dnf clean all && \
        mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/bin && \
-       mkdir -p /usr/src/multus-cni/rhel9/bin
+       mkdir -p /usr/src/multus-cni/rhel9/bin && \
+       mkdir -p /usr/src/multus-cni/rhel10/bin
 COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
-COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/rhel9/bin
-RUN bash -c '. /etc/os-release; \
-	RHEL_VERSION=$(echo "${VERSION_ID}" | cut -f 1 -d .); \
-	if [ -d /usr/src/multus-cni/rhel${RHEL_VERSION}/bin ]; then \
-		cp /usr/src/multus-cni/rhel${RHEL_VERSION}/bin/* /usr/src/multus-cni/bin; \
-	fi'
+RUN ln /usr/src/multus-cni/bin/* /usr/src/multus-cni/rhel9/bin/ && \
+       ln /usr/src/multus-cni/bin/* /usr/src/multus-cni/rhel10/bin/
 ADD ./images/entrypoint.sh /
 
 LABEL io.k8s.display-name="Multus CNI" \
