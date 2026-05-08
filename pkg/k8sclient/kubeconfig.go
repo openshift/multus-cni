@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"time"
 
 	certificatesv1 "k8s.io/api/certificates/v1"
@@ -149,6 +150,13 @@ func InClusterK8sClient() (*ClientInfo, error) {
 	return clientInfo, err
 }
 
+// sanitizeBracketedHost strips brackets from non-IPv6 hostnames that Go 1.24.8+ rejects (CVE-2025-47912).
+var bracketRegex = regexp.MustCompile(`(://)\[([^:]+)\]`)
+
+func sanitizeBracketedHost(serverURL string) string {
+	return bracketRegex.ReplaceAllString(serverURL, "$1$2")
+}
+
 // GetK8sClient gets client info from kubeconfig
 func GetK8sClient(kubeconfig string, kubeClient *ClientInfo) (*ClientInfo, error) {
 	logging.Debugf("GetK8sClient: %s, %v", kubeconfig, kubeClient)
@@ -168,6 +176,7 @@ func GetK8sClient(kubeconfig string, kubeClient *ClientInfo) (*ClientInfo, error
 		if err != nil {
 			return nil, logging.Errorf("GetK8sClient: failed to get context for the kubeconfig %v: %v", kubeconfig, err)
 		}
+		config.Host = sanitizeBracketedHost(config.Host)
 	} else if os.Getenv("KUBERNETES_SERVICE_HOST") != "" && os.Getenv("KUBERNETES_SERVICE_PORT") != "" {
 		// Try in-cluster config where multus might be running in a kubernetes pod
 		config, err = rest.InClusterConfig()
