@@ -31,8 +31,7 @@ nodes:
     - |
       kind: ClusterConfiguration
       apiServer:
-        extraArgs:
-          runtime-config: "resource.k8s.io/v1beta1=true"
+        extraArgs: {}
       scheduler:
         extraArgs:
           v: "1"
@@ -51,7 +50,7 @@ nodes:
       nodeRegistration:
         kubeletExtraArgs:
           pod-manifest-path: "/etc/kubernetes/manifests/"
-          feature-gates: "DynamicResourceAllocation=true,DRAResourceClaimDeviceStatus=true,KubeletPodResourcesDynamicResources=true"
+          feature-gates: "DRAResourceClaimDeviceStatus=true"
     - |
       kind: JoinConfiguration
       nodeRegistration:
@@ -64,7 +63,7 @@ nodes:
       nodeRegistration:
         kubeletExtraArgs:
           pod-manifest-path: "/etc/kubernetes/manifests/"
-          feature-gates: "DynamicResourceAllocation=true,DRAResourceClaimDeviceStatus=true,KubeletPodResourcesDynamicResources=true"
+          feature-gates: "DRAResourceClaimDeviceStatus=true"
     - |
       kind: JoinConfiguration
       nodeRegistration:
@@ -73,9 +72,7 @@ nodes:
 # Required by DRA Integration
 ##
 featureGates:
-  DynamicResourceAllocation: true
   DRAResourceClaimDeviceStatus: true
-  KubeletPodResourcesDynamicResources: true
 runtimeConfig:
   "api/beta": "true"
 containerdConfigPatches:
