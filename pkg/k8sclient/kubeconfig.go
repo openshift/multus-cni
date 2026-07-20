@@ -37,7 +37,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/transport"
 	"k8s.io/client-go/util/certificate"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	netclient "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
