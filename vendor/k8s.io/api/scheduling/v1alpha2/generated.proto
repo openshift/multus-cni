@@ -547,3 +547,4 @@ message WorkloadSpec {
   // +k8s:immutable
   repeated PodGroupTemplate podGroupTemplates = 2;
 }
+
