@@ -57,6 +57,12 @@ users:
       client-key: {{.CERTDIR}}/multus-client-current.pem
 `
 
+type rootedPath struct {
+	dir  string
+	name string
+	path string
+}
+
 func main() {
 	certDir := pflag.StringP("certdir", "", "/tmp", "specify cert directory")
 	bootstrapConfig := pflag.StringP("bootstrap-config", "", "/tmp/kubeconfig", "specify bootstrap kubernetes config")
@@ -109,7 +115,7 @@ func main() {
 		klog.Fatalf("failed to start cert manager: %v", err)
 	}
 
-	fp, err := os.OpenFile(filepath.Clean(kubeconfigPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	fp, err := openFileInRoot(kubeconfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		klog.Fatalf("cannot create kubeconfig file %q: %v", kubeconfigPath, err)
 	}
@@ -139,24 +145,54 @@ func main() {
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	<-sigterm
 	klog.Infof("signal received. remove kubeconfig %q and quit.", kubeconfigPath)
-	err = os.Remove(filepath.Clean(kubeconfigPath))
+	err = removeInRoot(kubeconfigPath)
 	if err != nil {
 		klog.Errorf("failed to remove kubeconfig %q: %v", kubeconfigPath, err)
 	}
 }
 
-func cleanAbsolutePath(rawPath string) (string, error) {
+func cleanAbsolutePath(rawPath string) (rootedPath, error) {
 	if rawPath == "" {
-		return "", fmt.Errorf("path must not be empty")
+		return rootedPath{}, fmt.Errorf("path must not be empty")
 	}
 	for _, elem := range strings.Split(rawPath, string(filepath.Separator)) {
 		if elem == ".." {
-			return "", fmt.Errorf("path must not contain parent directory references")
+			return rootedPath{}, fmt.Errorf("path must not contain parent directory references")
 		}
 	}
 	cleanPath := filepath.Clean(rawPath)
 	if !filepath.IsAbs(cleanPath) {
-		return "", fmt.Errorf("path must be absolute")
+		return rootedPath{}, fmt.Errorf("path must be absolute")
 	}
-	return cleanPath, nil
+	dir, name := filepath.Split(cleanPath)
+	if !filepath.IsLocal(name) {
+		return rootedPath{}, fmt.Errorf("path must include a local file name")
+	}
+	return rootedPath{
+		dir:  filepath.Clean(dir),
+		name: name,
+		path: cleanPath,
+	}, nil
+}
+
+func (p rootedPath) String() string {
+	return p.path
+}
+
+func openFileInRoot(path rootedPath, flag int, perm os.FileMode) (*os.File, error) {
+	root, err := os.OpenRoot(path.dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.OpenFile(path.name, flag, perm)
+}
+
+func removeInRoot(path rootedPath) error {
+	root, err := os.OpenRoot(path.dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return root.Remove(path.name)
 }

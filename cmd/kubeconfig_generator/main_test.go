@@ -62,8 +62,14 @@ func TestCleanAbsolutePath(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tt.want {
+			if got.String() != tt.want {
 				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+			if got.dir != "/run/multus" {
+				t.Fatalf("expected root directory %q, got %q", "/run/multus", got.dir)
+			}
+			if got.name != "kubeconfig" {
+				t.Fatalf("expected local file name %q, got %q", "kubeconfig", got.name)
 			}
 		})
 	}

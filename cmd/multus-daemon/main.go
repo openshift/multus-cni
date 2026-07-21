@@ -47,6 +47,12 @@ import (
 // TODO: This could be a configuration option
 const SigTermCancelAfter = 10 * time.Second
 
+type rootedPath struct {
+	dir  string
+	name string
+	path string
+}
+
 func main() {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
@@ -198,7 +204,7 @@ func cniServerConfig(configFilePath string) (*srv.ControllerNetConf, error) {
 		return nil, fmt.Errorf("illegal server config path %s: %w", configFilePath, err)
 	}
 
-	configFileContents, err := os.ReadFile(filepath.Clean(path))
+	configFileContents, err := readFileInRoot(path)
 	if err != nil {
 		return nil, err
 	}
@@ -215,13 +221,17 @@ func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error 
 		return fmt.Errorf("illegal cniConfigDir %s: %w", cniConfigDir, err)
 	}
 
-	srcFile, err := os.Open(filepath.Clean(path))
+	srcFile, err := openInRoot(path)
 	if err != nil {
 		return fmt.Errorf("failed to open (READ only) file %s: %w", path, err)
 	}
 
-	dstFileName := filepath.Join(dstDir, filepath.Base(path))
-	dstFile, err := os.Create(dstFileName)
+	dstFileName := filepath.Join(dstDir.path, path.name)
+	dstFile, err := createInRoot(rootedPath{
+		dir:  dstDir.path,
+		name: path.name,
+		path: dstFileName,
+	})
 	if err != nil {
 		return fmt.Errorf("creating copying file %s: %w", dstFileName, err)
 	}
@@ -238,18 +248,57 @@ func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error 
 	return nil
 }
 
-func cleanAbsolutePath(rawPath string) (string, error) {
+func cleanAbsolutePath(rawPath string) (rootedPath, error) {
 	if rawPath == "" {
-		return "", fmt.Errorf("path must not be empty")
+		return rootedPath{}, fmt.Errorf("path must not be empty")
 	}
 	for _, elem := range strings.Split(rawPath, string(filepath.Separator)) {
 		if elem == ".." {
-			return "", fmt.Errorf("path must not contain parent directory references")
+			return rootedPath{}, fmt.Errorf("path must not contain parent directory references")
 		}
 	}
 	cleanPath := filepath.Clean(rawPath)
 	if !filepath.IsAbs(cleanPath) {
-		return "", fmt.Errorf("path must be absolute")
+		return rootedPath{}, fmt.Errorf("path must be absolute")
 	}
-	return cleanPath, nil
+	dir, name := filepath.Split(cleanPath)
+	if !filepath.IsLocal(name) {
+		return rootedPath{}, fmt.Errorf("path must include a local file name")
+	}
+	return rootedPath{
+		dir:  filepath.Clean(dir),
+		name: name,
+		path: cleanPath,
+	}, nil
+}
+
+func (p rootedPath) String() string {
+	return p.path
+}
+
+func openInRoot(path rootedPath) (*os.File, error) {
+	root, err := os.OpenRoot(path.dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.Open(path.name)
+}
+
+func createInRoot(path rootedPath) (*os.File, error) {
+	root, err := os.OpenRoot(path.dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.Create(path.name)
+}
+
+func readFileInRoot(path rootedPath) ([]byte, error) {
+	root, err := os.OpenRoot(path.dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(path.name)
 }

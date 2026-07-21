@@ -62,8 +62,14 @@ func TestCleanAbsolutePath(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tt.want {
+			if got.String() != tt.want {
 				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+			if got.dir != "/etc/cni/net.d/multus.d" {
+				t.Fatalf("expected root directory %q, got %q", "/etc/cni/net.d/multus.d", got.dir)
+			}
+			if got.name != "daemon-config.json" {
+				t.Fatalf("expected local file name %q, got %q", "daemon-config.json", got.name)
 			}
 		})
 	}
