@@ -90,7 +90,7 @@ func ParseMultusConfig(configPath string) (*MultusConf, error) {
 // top level cni version with the delegate cni version.
 // Since version 0.4.0, CHECK was introduced, which
 // causes incompatibility.
-func CheckVersionCompatibility(mc *MultusConf, delegate interface{}) error {
+func CheckVersionCompatibility(mc *MultusConf, delegate any) error {
 	const versionFmt = "delegate cni version is %s while top level cni version is %s"
 	v040, _ := semver.Make("0.4.0")
 	multusCNIVersion, err := semver.Make(mc.CNIVersion)
@@ -100,7 +100,7 @@ func CheckVersionCompatibility(mc *MultusConf, delegate interface{}) error {
 	}
 
 	if multusCNIVersion.GTE(v040) {
-		delegatesMap, ok := delegate.(map[string]interface{})
+		delegatesMap, ok := delegate.(map[string]any)
 		if !ok {
 			return errors.New("couldn't get cni version of delegate")
 		}
@@ -137,13 +137,13 @@ func (mc *MultusConf) Generate() (string, error) {
 	return string(data), err
 }
 
-func (mc *MultusConf) setCapabilities(cniData interface{}) error {
+func (mc *MultusConf) setCapabilities(cniData any) error {
 	var enabledCapabilities []string
-	var pluginsList []interface{}
-	cniDataMap, ok := cniData.(map[string]interface{})
+	var pluginsList []any
+	cniDataMap, ok := cniData.(map[string]any)
 	if ok {
 		if pluginsListEntry, ok := cniDataMap[configListCapabilityKey]; ok {
-			pluginsList = pluginsListEntry.([]interface{})
+			pluginsList = pluginsListEntry.([]any)
 		}
 	} else {
 		return errors.New("couldn't get cni config from delegate")
@@ -165,8 +165,8 @@ func (mc *MultusConf) setCapabilities(cniData interface{}) error {
 	return nil
 }
 
-func extractCapabilities(capabilitiesInterface interface{}) []string {
-	capabilitiesMap, ok := capabilitiesInterface.(map[string]interface{})
+func extractCapabilities(capabilitiesInterface any) []string {
+	capabilitiesMap, ok := capabilitiesInterface.(map[string]any)
 	if !ok {
 		return nil
 	}
@@ -174,7 +174,7 @@ func extractCapabilities(capabilitiesInterface interface{}) []string {
 	if !ok {
 		return nil
 	}
-	capabilities, ok := capabilitiesMapEntry.(map[string]interface{})
+	capabilities, ok := capabilitiesMapEntry.(map[string]any)
 	if !ok {
 		return nil
 	}

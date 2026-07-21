@@ -37,7 +37,7 @@ const (
 // Manager monitors the configuration of the primary CNI plugin, and
 // regenerates multus configuration whenever it gets updated.
 type Manager struct {
-	cniConfigData              map[string]interface{}
+	cniConfigData              map[string]any
 	configWatcher              *fsnotify.Watcher
 	multusConfig               *MultusConf
 	multusConfigDir            string
@@ -76,7 +76,7 @@ func overrideCNIVersion(cniConfigFile string, multusCNIVersion string) error {
 		return fmt.Errorf("failed to read cni config %s: %v", path, err)
 	}
 
-	var primaryCNIConfigData map[string]interface{}
+	var primaryCNIConfigData map[string]any
 	if err := json.Unmarshal(masterCNIConfigData, &primaryCNIConfigData); err != nil {
 		return fmt.Errorf("failed to unmarshall cni config %s: %w", cniConfigFile, err)
 	}
@@ -152,16 +152,14 @@ func (m *Manager) Start(ctx context.Context, wg *sync.WaitGroup) error {
 		return logging.Errorf("failed to persist the multus configuration: %v", err)
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		if err := m.monitorPluginConfiguration(ctx); err != nil {
 			_ = logging.Errorf("error watching file: %v", err)
 		}
 		logging.Verbosef("ConfigWatcher done")
 		logging.Verbosef("Delete old config @ %v", multusConfigFile)
 		os.Remove(multusConfigFile)
-	}()
+	})
 
 	return nil
 }
@@ -195,8 +193,8 @@ func (m *Manager) overrideNetworkName() error {
 	return nil
 }
 
-func (m *Manager) loadPrimaryCNIConfigurationData(primaryCNIConfigData interface{}) error {
-	cniConfigData := primaryCNIConfigData.(map[string]interface{})
+func (m *Manager) loadPrimaryCNIConfigurationData(primaryCNIConfigData any) error {
+	cniConfigData := primaryCNIConfigData.(map[string]any)
 
 	m.cniConfigData = cniConfigData
 	m.multusConfig.ClusterNetwork = m.primaryCNIConfigPath
@@ -319,13 +317,13 @@ func newWatcher(cniConfigDir string, readinessIndicatorDir string) (*fsnotify.Wa
 	return watcher, nil
 }
 
-func primaryCNIData(masterCNIPluginPath string) (interface{}, error) {
+func primaryCNIData(masterCNIPluginPath string) (any, error) {
 	masterCNIConfigData, err := os.ReadFile(masterCNIPluginPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the cluster primary CNI config %s: %w", masterCNIPluginPath, err)
 	}
 
-	var cniData interface{}
+	var cniData any
 	if err := json.Unmarshal(masterCNIConfigData, &cniData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshall primary CNI config: %w", err)
 	}

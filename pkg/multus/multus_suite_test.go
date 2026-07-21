@@ -188,7 +188,7 @@ func (f *fakeExec) ExecPlugin(_ context.Context, pluginPath string, stdinData []
 	fmt.Printf("[%s %d] exec plugin %q found %+v\n", cmd, index, pluginPath, plugin)
 
 	// strip prevResult from stdinData; tests don't need it
-	var m map[string]interface{}
+	var m map[string]any
 	reader := strings.NewReader(string(stdinData))
 	writer := new(bytes.Buffer)
 

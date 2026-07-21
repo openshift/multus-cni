@@ -92,7 +92,7 @@ var _ = Describe("Configuration Manager", func() {
 		raw, err := os.ReadFile(defaultCniConfig)
 		Expect(err).NotTo(HaveOccurred())
 
-		var jsonConfig map[string]interface{}
+		var jsonConfig map[string]any
 		err = json.Unmarshal(raw, &jsonConfig)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(jsonConfig["cniVersion"].(string)).To(Equal("1.1.1"))

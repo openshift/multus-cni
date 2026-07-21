@@ -37,7 +37,7 @@ type DelegateInterfaceAttributes struct {
 	// network attachment
 	MacRequest string `json:"mac,omitempty"`
 	// CNIArgs contains additional CNI arguments for the network interface
-	CNIArgs *map[string]interface{} `json:"cni-args"`
+	CNIArgs *map[string]any `json:"cni-args"`
 }
 
 // Response represents the response (computed in the CNI server) for

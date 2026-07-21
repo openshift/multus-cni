@@ -118,7 +118,7 @@ type Result struct {
 	CNIVersion string             `json:"cniVersion,omitempty"`
 	IP4        *types020.IPConfig `json:"ip4,omitempty"`
 	IP6        *types020.IPConfig `json:"ip6,omitempty"`
-	DNS        types.DNS          `json:"dns,omitempty"`
+	DNS        types.DNS          `json:"dns"`
 }
 
 // Version returns current CNIVersion of the given Result

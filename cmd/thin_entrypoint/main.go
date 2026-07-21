@@ -357,7 +357,7 @@ func (o *Options) createMultusConfig(prevMasterConfigFileHash []byte) (string, [
 		fmt.Printf("master config changed - recreating multus config\n")
 	}
 
-	masterConfig := map[string]interface{}{}
+	masterConfig := map[string]any{}
 	if err = json.Unmarshal(masterConfigBytes, &masterConfig); err != nil {
 		return "", nil, fmt.Errorf("cannot read master CNI config json: %v", err)
 	}
@@ -401,12 +401,12 @@ func (o *Options) createMultusConfig(prevMasterConfigFileHash []byte) (string, [
 		if !ok {
 			return "", nil, fmt.Errorf("cannot get 'plugins' field in master CNI config file %q: %v", masterConfigPath, err)
 		}
-		masterPlugins := masterPluginsElem.([]interface{})
+		masterPlugins := masterPluginsElem.([]any)
 		for _, v := range masterPlugins {
-			pluginFields := v.(map[string]interface{})
+			pluginFields := v.(map[string]any)
 			capabilitiesElem, ok := pluginFields["capabilities"]
 			if ok {
-				capabilities := capabilitiesElem.(map[string]interface{})
+				capabilities := capabilitiesElem.(map[string]any)
 				for k, v := range capabilities {
 					masterCapabilities[k] = v.(bool)
 				}
@@ -416,7 +416,7 @@ func (o *Options) createMultusConfig(prevMasterConfigFileHash []byte) (string, [
 	} else {
 		masterCapabilitiesElem, ok := masterConfig["capabilities"]
 		if ok {
-			for k, v := range masterCapabilitiesElem.(map[string]interface{}) {
+			for k, v := range masterCapabilitiesElem.(map[string]any) {
 				masterCapabilities[k] = v.(bool)
 			}
 		}

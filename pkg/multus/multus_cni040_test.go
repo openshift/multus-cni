@@ -917,13 +917,13 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 			ContainerID: "123456789",
 			Netns:       testNS.Path(),
 			IfName:      "eth0",
-			StdinData: []byte(fmt.Sprintf(`{
+			StdinData: fmt.Appendf(nil, `{
 	    "name": "node-cni-network",
 	    "type": "multus",
 	    "readinessindicatorfile": "/tmp/foo.multus.conf",
 	    "defaultnetworkwaitseconds": 3,
 	    "delegates": [%s,%s]
-	}`, expectedConf1, expectedConf2)),
+	}`, expectedConf1, expectedConf2),
 		}
 
 		fExec := newFakeExec()
@@ -963,13 +963,13 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 			ContainerID: "123456789",
 			Netns:       testNS.Path(),
 			IfName:      "eth0",
-			StdinData: []byte(fmt.Sprintf(`{
+			StdinData: fmt.Appendf(nil, `{
 		    "name": "node-cni-network",
 		    "type": "multus",
 		    "readinessindicatorfile": "/tmp/foo.multus.conf",
 		    "defaultnetworkwaitseconds": 3,
 		    "delegates": [%s,%s]
-		}`, expectedConf1, expectedConf2)),
+		}`, expectedConf1, expectedConf2),
 		}
 
 		fExec := newFakeExec()
@@ -1367,7 +1367,7 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 			Netns:       testNS.Path(),
 			IfName:      "eth0",
 			Args:        fmt.Sprintf("K8S_POD_NAME=%s;K8S_POD_NAMESPACE=%s", fakePod.ObjectMeta.Name, fakePod.ObjectMeta.Namespace),
-			StdinData: []byte(fmt.Sprintf(`{
+			StdinData: fmt.Appendf(nil, `{
 	    "name": "node-cni-network",
 	    "type": "multus",
 	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
@@ -1377,7 +1377,7 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 	        "cniVersion": "0.4.0",
 	        "type": "weave-net"
 	    }]
-	}`, tmpCNIDir)),
+	}`, tmpCNIDir),
 		}
 
 		fExec := newFakeExec()
@@ -1440,7 +1440,7 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 			Netns:       testNS.Path(),
 			IfName:      "eth0",
 			Args:        fmt.Sprintf("K8S_POD_NAME=%s;K8S_POD_NAMESPACE=%s", fakePod.ObjectMeta.Name, fakePod.ObjectMeta.Namespace),
-			StdinData: []byte(fmt.Sprintf(`{
+			StdinData: fmt.Appendf(nil, `{
 	    "name": "node-cni-network",
 	    "type": "multus",
 	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
@@ -1450,7 +1450,7 @@ var _ = Describe("multus operations cniVersion 0.4.0 config", func() {
 	        "cniVersion": "0.4.0",
 	        "type": "weave-net"
 	    }]
-	}`, tmpCNIDir)),
+	}`, tmpCNIDir),
 		}
 
 		fExec := newFakeExec()

@@ -490,7 +490,7 @@ var _ = Describe("config operations", func() {
 	})
 
 	It("add cni-args in config", func() {
-		var args map[string]interface{}
+		var args map[string]any
 		conf := `{
     "name": "second-network",
     "type": "bridge"
@@ -520,7 +520,7 @@ var _ = Describe("config operations", func() {
 	})
 
 	It("add cni-args in config which has cni args already (merge case)", func() {
-		var args map[string]interface{}
+		var args map[string]any
 		conf := `{
     "name": "second-network",
     "type": "bridge",
@@ -557,7 +557,7 @@ var _ = Describe("config operations", func() {
 	})
 
 	It("add cni-args in conflist", func() {
-		var args map[string]interface{}
+		var args map[string]any
 		conf := `{
     "name": "second-network",
     "plugins": [

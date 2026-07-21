@@ -102,7 +102,7 @@ func (l Level) String() string {
 	return "unknown"
 }
 
-func printf(level Level, format string, a ...interface{}) {
+func printf(level Level, format string, a ...any) {
 	header := "%s [%s] "
 	t := time.Now()
 	if level > loggingLevel {
@@ -123,23 +123,23 @@ func printf(level Level, format string, a ...interface{}) {
 }
 
 // Debugf prints logging if logging level >= debug
-func Debugf(format string, a ...interface{}) {
+func Debugf(format string, a ...any) {
 	printf(DebugLevel, format, a...)
 }
 
 // Verbosef prints logging if logging level >= verbose
-func Verbosef(format string, a ...interface{}) {
+func Verbosef(format string, a ...any) {
 	printf(VerboseLevel, format, a...)
 }
 
 // Errorf prints logging if logging level >= error
-func Errorf(format string, a ...interface{}) error {
+func Errorf(format string, a ...any) error {
 	printf(ErrorLevel, format, a...)
 	return fmt.Errorf(format, a...)
 }
 
 // Panicf prints logging plus stack trace. This should be used only for unrecoverable error
-func Panicf(format string, a ...interface{}) {
+func Panicf(format string, a ...any) {
 	printf(PanicLevel, format, a...)
 	printf(PanicLevel, "========= Stack trace output ========")
 	printf(PanicLevel, "%+v", errors.New("Multus Panic"))

@@ -32,14 +32,14 @@ type NetConf struct {
 
 	// support chaining for master interface and IP decisions
 	// occurring prior to running ipvlan plugin
-	RawPrevResult *map[string]interface{} `json:"prevResult"`
-	PrevResult    *cni100.Result          `json:"-"`
+	RawPrevResult *map[string]any `json:"prevResult"`
+	PrevResult    *cni100.Result  `json:"-"`
 
 	ConfDir string `json:"confDir"`
 	CNIDir  string `json:"cniDir"`
 	BinDir  string `json:"binDir"`
 	// RawDelegates is private to the NetConf class; use Delegates instead
-	RawDelegates []map[string]interface{} `json:"delegates"`
+	RawDelegates []map[string]any `json:"delegates"`
 	// These parameters are exclusive in one config file:
 	//  - Delegates (directly add delegate CNI config into multus CNI config)
 	//  - ClusterNetwork+DefaultNetworks  (add CNI config through CRD, directory or file)
@@ -158,7 +158,7 @@ type NetworkSelectionElement struct {
 	// DeviceID contains an optional requested deviceID the network
 	DeviceID string `json:"deviceID,omitempty"`
 	// CNIArgs contains additional CNI arguments for the network interface
-	CNIArgs *map[string]interface{} `json:"cni-args"`
+	CNIArgs *map[string]any `json:"cni-args"`
 	// GatewayRequest contains default route IP address for the pod
 	GatewayRequest *[]net.IP `json:"default-route,omitempty"`
 }

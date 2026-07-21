@@ -36,7 +36,7 @@ type testCase struct {
 	configGenerationFunction func() (string, error)
 }
 
-var primaryCNIConfig = map[string]interface{}{
+var primaryCNIConfig = map[string]any{
 	"cniVersion":         "1.0.0",
 	"name":               "ovn-kubernetes",
 	"type":               "ovn-k8s-cni-overlay",
@@ -256,13 +256,13 @@ var _ = Describe("Configuration Generator", func() {
 	})
 })
 
-func documentHelper(pluginInfo string) interface{} {
+func documentHelper(pluginInfo string) any {
 	dp, _ := documentCNIData([]byte(pluginInfo))
 	return dp
 }
 
-func documentCNIData(masterCNIConfigData []byte) (interface{}, error) {
-	var cniData interface{}
+func documentCNIData(masterCNIConfigData []byte) (any, error) {
+	var cniData any
 	if err := json.Unmarshal(masterCNIConfigData, &cniData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshall the delegate CNI configuration: %w", err)
 	}

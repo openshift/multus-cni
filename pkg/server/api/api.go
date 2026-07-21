@@ -50,7 +50,7 @@ const (
 
 // DoCNI sends a CNI request to the CNI server via JSON + HTTP over a root-owned unix socket,
 // and returns the result
-func DoCNI(url string, req interface{}, socketPath string) ([]byte, error) {
+func DoCNI(url string, req any, socketPath string) ([]byte, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal CNI request %v: %v", req, err)

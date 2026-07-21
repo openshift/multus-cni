@@ -18,9 +18,11 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -324,7 +326,7 @@ func newCNIRuntimeConf(containerID, sandboxID, podName, podNamespace, podUID, ne
 	cniArgs := os.Getenv("CNI_ARGS")
 	if cniArgs != "" {
 		logging.Debugf("ARGS: %s", cniArgs)
-		for _, arg := range strings.Split(cniArgs, ";") {
+		for arg := range strings.SplitSeq(cniArgs, ";") {
 			// SplitN to handle = within values, like BLAH=foo=bar
 			keyval := strings.SplitN(arg, "=", 2)
 			if len(keyval) != 2 {
@@ -353,7 +355,7 @@ func newCNIRuntimeConf(containerID, sandboxID, podName, podNamespace, podUID, ne
 
 	if delegateRc != nil {
 		cniDeviceInfoFile = delegateRc.CNIDeviceInfoFile
-		capabilityArgs := map[string]interface{}{}
+		capabilityArgs := map[string]any{}
 		if len(delegateRc.PortMaps) != 0 {
 			capabilityArgs["portMappings"] = delegateRc.PortMaps
 		}
@@ -537,7 +539,7 @@ func (n *NetConf) AddDelegates(newDelegates []*DelegateNetConf) error {
 
 // delegateAddDeviceID injects deviceID information in delegate bytes
 func delegateAddDeviceID(inBytes []byte, deviceID string) ([]byte, error) {
-	var rawConfig map[string]interface{}
+	var rawConfig map[string]any
 	var err error
 
 	err = json.Unmarshal(inBytes, &rawConfig)
@@ -557,7 +559,7 @@ func delegateAddDeviceID(inBytes []byte, deviceID string) ([]byte, error) {
 
 // addDeviceIDInConfList injects deviceID information in delegate bytes
 func addDeviceIDInConfList(inBytes []byte, deviceID string) ([]byte, error) {
-	var rawConfig map[string]interface{}
+	var rawConfig map[string]any
 	var err error
 
 	err = json.Unmarshal(inBytes, &rawConfig)
@@ -570,13 +572,13 @@ func addDeviceIDInConfList(inBytes []byte, deviceID string) ([]byte, error) {
 		return nil, logging.Errorf("addDeviceIDInConfList: unable to get plugin list")
 	}
 
-	pMap, ok := pList.([]interface{})
+	pMap, ok := pList.([]any)
 	if !ok {
 		return nil, logging.Errorf("addDeviceIDInConfList: unable to typecast plugin list")
 	}
 
 	for idx, plugin := range pMap {
-		currentPlugin, ok := plugin.(map[string]interface{})
+		currentPlugin, ok := plugin.(map[string]any)
 		if !ok {
 			return nil, logging.Errorf("addDeviceIDInConfList: unable to typecast plugin #%d", idx)
 		}
@@ -594,20 +596,18 @@ func addDeviceIDInConfList(inBytes []byte, deviceID string) ([]byte, error) {
 }
 
 // injectCNIArgs injects given args to cniConfig
-func injectCNIArgs(cniConfig *map[string]interface{}, args *map[string]interface{}) error {
+func injectCNIArgs(cniConfig *map[string]any, args *map[string]any) error {
 	if argsval, ok := (*cniConfig)["args"]; ok {
-		argsvalmap := argsval.(map[string]interface{})
+		argsvalmap := argsval.(map[string]any)
 		if cnival, ok := argsvalmap["cni"]; ok {
-			cnivalmap := cnival.(map[string]interface{})
+			cnivalmap := cnival.(map[string]any)
 			// merge it if conf has args
-			for key, val := range *args {
-				cnivalmap[key] = val
-			}
+			maps.Copy(cnivalmap, *args)
 		} else {
 			argsvalmap["cni"] = *args
 		}
 	} else {
-		argsval := map[string]interface{}{}
+		argsval := map[string]any{}
 		argsval["cni"] = *args
 		(*cniConfig)["args"] = argsval
 	}
@@ -615,8 +615,8 @@ func injectCNIArgs(cniConfig *map[string]interface{}, args *map[string]interface
 }
 
 // addCNIArgsInConfig injects given cniArgs to CNI config in inBytes
-func addCNIArgsInConfig(inBytes []byte, cniArgs *map[string]interface{}) ([]byte, error) {
-	var rawConfig map[string]interface{}
+func addCNIArgsInConfig(inBytes []byte, cniArgs *map[string]any) ([]byte, error) {
+	var rawConfig map[string]any
 	var err error
 
 	err = json.Unmarshal(inBytes, &rawConfig)
@@ -634,8 +634,8 @@ func addCNIArgsInConfig(inBytes []byte, cniArgs *map[string]interface{}) ([]byte
 }
 
 // addCNIArgsInConfList injects given cniArgs to CNI conflist in inBytes
-func addCNIArgsInConfList(inBytes []byte, cniArgs *map[string]interface{}) ([]byte, error) {
-	var rawConfig map[string]interface{}
+func addCNIArgsInConfList(inBytes []byte, cniArgs *map[string]any) ([]byte, error) {
+	var rawConfig map[string]any
 	var err error
 
 	err = json.Unmarshal(inBytes, &rawConfig)
@@ -648,13 +648,13 @@ func addCNIArgsInConfList(inBytes []byte, cniArgs *map[string]interface{}) ([]by
 		return nil, logging.Errorf("addCNIArgsInConfList(): unable to get plugin list")
 	}
 
-	pMap, ok := pList.([]interface{})
+	pMap, ok := pList.([]any)
 	if !ok {
 		return nil, logging.Errorf("addCNIArgsInConfList(): unable to typecast plugin list")
 	}
 
 	for idx := range pMap {
-		valMap := pMap[idx].(map[string]interface{})
+		valMap := pMap[idx].(map[string]any)
 		injectCNIArgs(&valMap, cniArgs)
 	}
 
@@ -708,12 +708,7 @@ func CheckGatewayConfig(delegates []*DelegateNetConf) error {
 
 // CheckSystemNamespaces checks whether given namespace is in systemNamespaces or not.
 func CheckSystemNamespaces(namespace string, systemNamespaces []string) bool {
-	for _, nsname := range systemNamespaces {
-		if namespace == nsname {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(systemNamespaces, namespace)
 }
 
 // GetReadinessIndicatorFile waits for readinessIndicatorFile

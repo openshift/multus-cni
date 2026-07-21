@@ -150,7 +150,7 @@ func GetListener(socketPath string) (net.Listener, error) {
 }
 
 // Informer transform to trim object fields for memory efficiency.
-func informerObjectTrim(obj interface{}) (interface{}, error) {
+func informerObjectTrim(obj any) (any, error) {
 	if accessor, err := meta.Accessor(obj); err == nil {
 		accessor.SetManagedFields(nil)
 	}
@@ -500,12 +500,12 @@ func overrideCNIConfigWithServerConfig(cniConf []byte, overrideConf []byte, igno
 		return cniConf, nil
 	}
 
-	var cni map[string]interface{}
+	var cni map[string]any
 	if err := json.Unmarshal(cniConf, &cni); err != nil {
 		return nil, fmt.Errorf("failed to unmarshall CNI config: %w", err)
 	}
 
-	var override map[string]interface{}
+	var override map[string]any
 	if err := json.Unmarshal(overrideConf, &override); err != nil {
 		return nil, fmt.Errorf("failed to unmarshall CNI override config: %w", err)
 	}
@@ -615,7 +615,7 @@ func gatherCNIArgs(env map[string]string) (map[string]string, error) {
 	}
 
 	mapArgs := make(map[string]string)
-	for _, arg := range strings.Split(cniArgs, ";") {
+	for arg := range strings.SplitSeq(cniArgs, ";") {
 		parts := strings.Split(arg, "=")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid CNI_ARG '%s'", arg)

@@ -117,7 +117,7 @@ func DeleteDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName strin
 }
 
 func deleteDefaultGWCacheBytes(cacheFile []byte, ipv4, ipv6 bool) ([]byte, error) {
-	var cachedInfo map[string]interface{}
+	var cachedInfo map[string]any
 	if err := json.Unmarshal(cacheFile, &cachedInfo); err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func deleteDefaultGWCacheBytes(cacheFile []byte, ipv4, ipv6 bool) ([]byte, error
 		return nil, fmt.Errorf("cannot get result from cache")
 	}
 
-	resultJSON, ok := cachedInfo["result"].(map[string]interface{})
+	resultJSON, ok := cachedInfo["result"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("wrong result type: %v", cachedInfo["result"])
 	}
@@ -145,10 +145,10 @@ func deleteDefaultGWCacheBytes(cacheFile []byte, ipv4, ipv6 bool) ([]byte, error
 	return newCache, nil
 }
 
-func deleteDefaultGWResultRoutes(routes []interface{}, dstGW string) ([]interface{}, error) {
-	var newRoutes []interface{}
+func deleteDefaultGWResultRoutes(routes []any, dstGW string) ([]any, error) {
+	var newRoutes []any
 	for i, r := range routes {
-		route, ok := r.(map[string]interface{})
+		route, ok := r.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("wrong route format: %v", r)
 		}
@@ -166,7 +166,7 @@ func deleteDefaultGWResultRoutes(routes []interface{}, dstGW string) ([]interfac
 	return newRoutes, nil
 }
 
-func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[string]interface{}, error) {
+func deleteDefaultGWResult(result map[string]any, ipv4, ipv6 bool) (map[string]any, error) {
 	// try to get cniVersion from result
 	_, ok := result["cniVersion"]
 	if !ok {
@@ -193,7 +193,7 @@ func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[
 		// No route in result, hence we do nothing
 		return result, nil
 	}
-	routes, ok := result["routes"].([]interface{})
+	routes, ok := result["routes"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("wrong routes format: %v", result["routes"])
 	}
@@ -223,19 +223,19 @@ func deleteDefaultGWResult(result map[string]interface{}, ipv4, ipv6 bool) (map[
 	return result, nil
 }
 
-func deleteDefaultGWResult020(result map[string]interface{}, ipv4, ipv6 bool) (map[string]interface{}, error) {
+func deleteDefaultGWResult020(result map[string]any, ipv4, ipv6 bool) (map[string]any, error) {
 	var err error
 	if ipv4 {
 		_, ok := result["ip4"]
 		if ok {
-			ip4, ok := result["ip4"].(map[string]interface{})
+			ip4, ok := result["ip4"].(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("wrong ip4 format: %v", result["ip4"])
 			}
 
 			_, ok = ip4["routes"]
 			if ok {
-				routes, ok := ip4["routes"].([]interface{})
+				routes, ok := ip4["routes"].([]any)
 				if !ok {
 					return nil, fmt.Errorf("wrong ip4 routes format: %v", ip4["routes"])
 				}
@@ -252,14 +252,14 @@ func deleteDefaultGWResult020(result map[string]interface{}, ipv4, ipv6 bool) (m
 	if ipv6 {
 		_, ok := result["ip6"]
 		if ok {
-			ip6, ok := result["ip6"].(map[string]interface{})
+			ip6, ok := result["ip6"].(map[string]any)
 			if !ok {
 				return nil, fmt.Errorf("wrong ip6 format: %v", result["ip6"])
 			}
 
 			_, ok = ip6["routes"]
 			if ok {
-				routes, ok := ip6["routes"].([]interface{})
+				routes, ok := ip6["routes"].([]any)
 				if !ok {
 					return nil, fmt.Errorf("wrong ip6 routes format: %v", ip6["routes"])
 				}
@@ -295,7 +295,7 @@ func AddDefaultGWCache(cacheDir string, rt *libcni.RuntimeConf, netName string, 
 }
 
 func addDefaultGWCacheBytes(cacheFile []byte, gw []net.IP) ([]byte, error) {
-	var cachedInfo map[string]interface{}
+	var cachedInfo map[string]any
 	if err := json.Unmarshal(cacheFile, &cachedInfo); err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func addDefaultGWCacheBytes(cacheFile []byte, gw []net.IP) ([]byte, error) {
 		return nil, fmt.Errorf("cannot get result from cache")
 	}
 
-	resultJSON, ok := cachedInfo["result"].(map[string]interface{})
+	resultJSON, ok := cachedInfo["result"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("wrong result type: %v", cachedInfo["result"])
 	}
@@ -323,7 +323,7 @@ func addDefaultGWCacheBytes(cacheFile []byte, gw []net.IP) ([]byte, error) {
 	return newCache, nil
 }
 
-func addDefaultGWResult(result map[string]interface{}, gw []net.IP) (map[string]interface{}, error) {
+func addDefaultGWResult(result map[string]any, gw []net.IP) (map[string]any, error) {
 	// try to get cniVersion from result
 	_, ok := result["cniVersion"]
 	if !ok {
@@ -345,10 +345,10 @@ func addDefaultGWResult(result map[string]interface{}, gw []net.IP) (map[string]
 		return nil, fmt.Errorf("not supported version: %s", cniVersion)
 	}
 
-	routes := []interface{}{}
+	routes := []any{}
 	_, ok = result["routes"]
 	if ok {
-		routes, ok = result["routes"].([]interface{})
+		routes, ok = result["routes"].([]any)
 		if !ok {
 			return nil, fmt.Errorf("wrong routes format: %v", result["routes"])
 		}
@@ -382,19 +382,19 @@ func isSupportedGatewayResultVersion(cniVersion string) bool {
 	return false
 }
 
-func addDefaultGWResult020(result map[string]interface{}, gw []net.IP) (map[string]interface{}, error) {
+func addDefaultGWResult020(result map[string]any, gw []net.IP) (map[string]any, error) {
 	for _, g := range gw {
 		if g.To4() != nil {
 			_, ok := result["ip4"]
 			if ok {
-				ip4, ok := result["ip4"].(map[string]interface{})
+				ip4, ok := result["ip4"].(map[string]any)
 				if !ok {
 					return nil, fmt.Errorf("wrong ip4 format: %v", result["ip4"])
 				}
-				routes := []interface{}{}
+				routes := []any{}
 				_, ok = ip4["routes"]
 				if ok {
-					routes, ok = ip4["routes"].([]interface{})
+					routes, ok = ip4["routes"].([]any)
 					if !ok {
 						return nil, fmt.Errorf("wrong ip4 routes format: %v", ip4["routes"])
 					}
@@ -407,14 +407,14 @@ func addDefaultGWResult020(result map[string]interface{}, gw []net.IP) (map[stri
 		} else {
 			_, ok := result["ip6"]
 			if ok {
-				ip6, ok := result["ip6"].(map[string]interface{})
+				ip6, ok := result["ip6"].(map[string]any)
 				if !ok {
 					return nil, fmt.Errorf("wrong ip6 format: %v", result["ip4"])
 				}
-				routes := []interface{}{}
+				routes := []any{}
 				_, ok = ip6["routes"]
 				if ok {
-					routes, ok = ip6["routes"].([]interface{})
+					routes, ok = ip6["routes"].([]any)
 					if !ok {
 						return nil, fmt.Errorf("wrong ip6 routes format: %v", ip6["routes"])
 					}

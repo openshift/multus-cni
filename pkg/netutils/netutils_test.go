@@ -55,14 +55,14 @@ func testAddAddr(link netlink.Link, ip net.IP, mask net.IPMask) error {
 }
 
 func testGetResultFromCache(data []byte) []byte {
-	var cachedInfo map[string]interface{}
+	var cachedInfo map[string]any
 	ExpectWithOffset(1, json.Unmarshal(data, &cachedInfo)).NotTo(HaveOccurred())
 
 	// try to get result
 	_, ok := cachedInfo["result"]
 	ExpectWithOffset(1, ok).To(BeTrue())
 
-	resultJSON, ok := cachedInfo["result"].(map[string]interface{})
+	resultJSON, ok := cachedInfo["result"].(map[string]any)
 	ExpectWithOffset(1, ok).To(BeTrue())
 
 	resultByte, err := json.Marshal(resultJSON)
@@ -1498,7 +1498,7 @@ var _ = Describe("other function unit testing", func() {
 		{ "dst": "0.0.0.0/0", "gw": "10.1.1.1" }
 		]`)
 
-		var routes []interface{}
+		var routes []any
 		err := json.Unmarshal(cniRouteConfig, &routes)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1510,10 +1510,10 @@ var _ = Describe("other function unit testing", func() {
 	})
 
 	It("supports gateway result updates for cniVersion 1.1.0", func() {
-		deleteInput := map[string]interface{}{
+		deleteInput := map[string]any{
 			"cniVersion": "1.1.0",
-			"routes": []interface{}{
-				map[string]interface{}{"dst": "0.0.0.0/0", "gw": "10.1.1.1"},
+			"routes": []any{
+				map[string]any{"dst": "0.0.0.0/0", "gw": "10.1.1.1"},
 			},
 		}
 		updatedDeleteResult, err := deleteDefaultGWResult(deleteInput, true, false)
@@ -1521,18 +1521,18 @@ var _ = Describe("other function unit testing", func() {
 		_, hasRoutes := updatedDeleteResult["routes"]
 		Expect(hasRoutes).To(BeFalse())
 
-		addInput := map[string]interface{}{
+		addInput := map[string]any{
 			"cniVersion": "1.1.0",
 		}
 		updatedAddResult, err := addDefaultGWResult(addInput, []net.IP{net.ParseIP("10.1.1.1")})
 		Expect(err).NotTo(HaveOccurred())
-		routes, ok := updatedAddResult["routes"].([]interface{})
+		routes, ok := updatedAddResult["routes"].([]any)
 		Expect(ok).To(BeTrue())
 		Expect(routes).To(HaveLen(1))
 	})
 
 	It("rejects unsupported pre-1.0.0 cniVersion", func() {
-		addInput := map[string]interface{}{
+		addInput := map[string]any{
 			"cniVersion": "0.9.0",
 		}
 		_, err := addDefaultGWResult(addInput, []net.IP{net.ParseIP("10.1.1.1")})

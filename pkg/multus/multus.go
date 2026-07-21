@@ -628,7 +628,7 @@ func delPlugins(exec invoke.Exec, pod *v1.Pod, args *skel.CmdArgs, k8sArgs *type
 	return nil
 }
 
-func cmdErr(k8sArgs *types.K8sArgs, format string, args ...interface{}) error {
+func cmdErr(k8sArgs *types.K8sArgs, format string, args ...any) error {
 	prefix := "Multus: "
 	if k8sArgs != nil {
 		prefix += fmt.Sprintf("[%s/%s/%s]: ", k8sArgs.K8S_POD_NAMESPACE, k8sArgs.K8S_POD_NAME, k8sArgs.K8S_POD_UID)
@@ -636,7 +636,7 @@ func cmdErr(k8sArgs *types.K8sArgs, format string, args ...interface{}) error {
 	return logging.Errorf(prefix+format, args...)
 }
 
-func cmdPluginErr(k8sArgs *types.K8sArgs, confName string, format string, args ...interface{}) error {
+func cmdPluginErr(k8sArgs *types.K8sArgs, confName string, format string, args ...any) error {
 	msg := ""
 	if k8sArgs != nil {
 		msg += fmt.Sprintf("[%s/%s/%s:%s]: ", k8sArgs.K8S_POD_NAMESPACE, k8sArgs.K8S_POD_NAME, k8sArgs.K8S_POD_UID, confName)
