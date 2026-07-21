@@ -13,3 +13,4 @@ exclude:
     - vendor/k8s.io/client-go/util/cert
     - vendor/k8s.io/klog
     - vendor/k8s.io/klog/v2
+    - vendor/golang.org/x/tools/internal/pkgbits

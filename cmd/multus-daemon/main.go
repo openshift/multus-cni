@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -192,12 +193,12 @@ func startMultusDaemon(ctx context.Context, daemonConfig *srv.ControllerNetConf,
 }
 
 func cniServerConfig(configFilePath string) (*srv.ControllerNetConf, error) {
-	path, err := filepath.Abs(configFilePath)
+	path, err := cleanAbsolutePath(configFilePath)
 	if err != nil {
-		return nil, fmt.Errorf("illegal path %s in server config path %s: %w", path, configFilePath, err)
+		return nil, fmt.Errorf("illegal server config path %s: %w", configFilePath, err)
 	}
 
-	configFileContents, err := os.ReadFile(path)
+	configFileContents, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -205,17 +206,21 @@ func cniServerConfig(configFilePath string) (*srv.ControllerNetConf, error) {
 }
 
 func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error {
-	path, err := filepath.Abs(multusConfigPath)
+	path, err := cleanAbsolutePath(multusConfigPath)
 	if err != nil {
-		return fmt.Errorf("illegal path %s in multusConfigPath %s: %w", path, multusConfigPath, err)
+		return fmt.Errorf("illegal multusConfigPath %s: %w", multusConfigPath, err)
+	}
+	dstDir, err := cleanAbsolutePath(cniConfigDir)
+	if err != nil {
+		return fmt.Errorf("illegal cniConfigDir %s: %w", cniConfigDir, err)
 	}
 
-	srcFile, err := os.Open(path)
+	srcFile, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("failed to open (READ only) file %s: %w", path, err)
 	}
 
-	dstFileName := cniConfigDir + "/" + filepath.Base(multusConfigPath)
+	dstFileName := filepath.Join(dstDir, filepath.Base(path))
 	dstFile, err := os.Create(dstFileName)
 	if err != nil {
 		return fmt.Errorf("creating copying file %s: %w", dstFileName, err)
@@ -231,4 +236,20 @@ func copyUserProvidedConfig(multusConfigPath string, cniConfigDir string) error 
 		return fmt.Errorf("error copying file - copied only %d bytes out of %d", nBytes, srcFileInfo.Size())
 	}
 	return nil
+}
+
+func cleanAbsolutePath(rawPath string) (string, error) {
+	if rawPath == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	for _, elem := range strings.Split(rawPath, string(filepath.Separator)) {
+		if elem == ".." {
+			return "", fmt.Errorf("path must not contain parent directory references")
+		}
+	}
+	cleanPath := filepath.Clean(rawPath)
+	if !filepath.IsAbs(cleanPath) {
+		return "", fmt.Errorf("path must be absolute")
+	}
+	return cleanPath, nil
 }

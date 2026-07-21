@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"text/template"
 	"time"
@@ -63,15 +64,15 @@ func main() {
 	certDurationString := pflag.StringP("cert-duration", "", "10m", "specify certificate duration")
 	helpFlag := pflag.BoolP("help", "h", false, "show help message and quit")
 
-	kubeconfigPath, err := filepath.Abs(*kubeconfigPathRaw)
-	if err != nil {
-		klog.Fatalf("illegal path %s in kubeconfigPath %s: %v", kubeconfigPath, *kubeconfigPathRaw, err)
-	}
-
 	pflag.Parse()
 	if *helpFlag {
 		pflag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	kubeconfigPath, err := cleanAbsolutePath(*kubeconfigPathRaw)
+	if err != nil {
+		klog.Fatalf("illegal kubeconfig path %q: %v", *kubeconfigPathRaw, err)
 	}
 
 	// check variables
@@ -108,7 +109,7 @@ func main() {
 		klog.Fatalf("failed to start cert manager: %v", err)
 	}
 
-	fp, err := os.OpenFile(kubeconfigPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	fp, err := os.OpenFile(filepath.Clean(kubeconfigPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		klog.Fatalf("cannot create kubeconfig file %q: %v", kubeconfigPath, err)
 	}
@@ -138,8 +139,24 @@ func main() {
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	<-sigterm
 	klog.Infof("signal received. remove kubeconfig %q and quit.", kubeconfigPath)
-	err = os.Remove(kubeconfigPath)
+	err = os.Remove(filepath.Clean(kubeconfigPath))
 	if err != nil {
 		klog.Errorf("failed to remove kubeconfig %q: %v", kubeconfigPath, err)
 	}
+}
+
+func cleanAbsolutePath(rawPath string) (string, error) {
+	if rawPath == "" {
+		return "", fmt.Errorf("path must not be empty")
+	}
+	for _, elem := range strings.Split(rawPath, string(filepath.Separator)) {
+		if elem == ".." {
+			return "", fmt.Errorf("path must not contain parent directory references")
+		}
+	}
+	cleanPath := filepath.Clean(rawPath)
+	if !filepath.IsAbs(cleanPath) {
+		return "", fmt.Errorf("path must be absolute")
+	}
+	return cleanPath, nil
 }
