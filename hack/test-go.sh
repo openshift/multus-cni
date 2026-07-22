@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export KUBE_FEATURE_WatchListClient=false
 set -e
 
 # this if... will be removed when gomodules goes default
