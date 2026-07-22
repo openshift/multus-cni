@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
+export KUBE_FEATURE_WatchListClient=false
+
 # this if... will be removed when gomodules goes default
 if [ "$GO111MODULE" == "off" ]; then
 	echo "Warning: this will be deprecated in near future so please use go modules!"
