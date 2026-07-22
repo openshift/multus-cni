@@ -512,7 +512,7 @@ func overrideCNIConfigWithServerConfig(cniConf []byte, overrideConf []byte, igno
 
 	// Copy each key of the override config into the CNI config except for
 	// a few specific keys
-	ignoreKeys := sets.NewString()
+	ignoreKeys := sets.New[string]()
 	if ignoreReadinessIndicator {
 		ignoreKeys.Insert("readinessindicatorfile")
 	}
