@@ -51,6 +51,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	informerfactory "k8s.io/client-go/informers"
 	v1coreinformers "k8s.io/client-go/informers/core/v1"
@@ -495,15 +496,8 @@ func (s *Server) handleDelegateRequest(r *http.Request) ([]byte, error) {
 }
 
 func overrideCNIConfigWithServerConfig(cniConf []byte, overrideConf []byte, ignoreReadinessIndicator bool) ([]byte, error) {
-	// If there is no server-side override config AND we don't need to strip any keys,
-	// return the client config unchanged.
-	if len(overrideConf) == 0 && !ignoreReadinessIndicator {
-		return cniConf, nil
-	}
-	// Treat a missing server config as an empty object so the key-stripping logic below
-	// still runs when ignoreReadinessIndicator is true.
 	if len(overrideConf) == 0 {
-		overrideConf = []byte("{}")
+		return cniConf, nil
 	}
 
 	var cni map[string]interface{}
@@ -516,13 +510,14 @@ func overrideCNIConfigWithServerConfig(cniConf []byte, overrideConf []byte, igno
 		return nil, fmt.Errorf("failed to unmarshall CNI override config: %w", err)
 	}
 
-	// Remove keys from the client config that the server wants to ignore, then
-	// overlay the server-side overrides (also skipping those same keys).
+	// Copy each key of the override config into the CNI config except for
+	// a few specific keys
+	ignoreKeys := sets.NewString()
 	if ignoreReadinessIndicator {
-		delete(cni, "readinessindicatorfile")
+		ignoreKeys.Insert("readinessindicatorfile")
 	}
 	for overrideKey, overrideVal := range override {
-		if !ignoreReadinessIndicator || overrideKey != "readinessindicatorfile" {
+		if !ignoreKeys.Has(overrideKey) {
 			cni[overrideKey] = overrideVal
 		}
 	}
