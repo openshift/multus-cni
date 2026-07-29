@@ -19,8 +19,7 @@ spec:
     singular: network-attachment-definition
     kind: NetworkAttachmentDefinition
     shortNames:
-      - nad
-      - net-attach-def
+    - net-attach-def
   versions:
     - name: v1
       served: true
@@ -70,18 +69,7 @@ rules:
       - pods/status
     verbs:
       - get
-      - list
       - update
-      - watch
-  - apiGroups:
-      - "resource.k8s.io"
-    resources:
-      - resourceclaims
-      - resourceclaims/status
-      - resourceslices
-    verbs:
-      - get
-      - list
   - apiGroups:
       - ""
       - events.k8s.io

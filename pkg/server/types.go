@@ -77,10 +77,8 @@ type ControllerNetConf struct {
 	LogLevel           string              `json:"logLevel"`
 	LogToStderr        bool                `json:"logToStderr,omitempty"`
 	PerNodeCertificate *PerNodeCertificate `json:"perNodeCertificate,omitempty"`
-	ConnectionLimit    *int                `json:"connectionLimit,omitempty"`
 
-	MetricsPort *int  `json:"metricsPort,omitempty"`
-	EnablePprof *bool `json:"enablePprof,omitempty"`
+	MetricsPort *int `json:"metricsPort,omitempty"`
 
 	// Option to point to the path of the unix domain socket through which the
 	// multus client / server communicate.
