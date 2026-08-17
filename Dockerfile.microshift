@@ -5,7 +5,7 @@ WORKDIR /usr/src/multus-cni
 ENV CGO_ENABLED=1
 ENV GO111MODULE=off
 ENV VERSION=rhel9 COMMIT=unset
-RUN ./hack/build-go.sh
+RUN GO111MODULE=on go mod vendor && ./hack/build-go.sh
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/5.0:base-rhel9

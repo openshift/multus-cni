@@ -5,8 +5,10 @@ WORKDIR /usr/src/multus-cni
 ENV CGO_ENABLED=1
 ENV GO111MODULE=off
 ENV VERSION=rhel9 COMMIT=unset
-RUN ./hack/build-go.sh && \
+RUN GO111MODULE=on go mod vendor && ./hack/build-go.sh && \
        cd /usr/src/multus-cni/bin
+ENV GO111MODULE=on
+RUN make build-e2e-tests && gzip -9 test/bin/multus-cni-tests-ext
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/5.0:base-rhel9
@@ -14,6 +16,7 @@ RUN dnf install -y util-linux && dnf clean all && \
        mkdir -p /usr/src/multus-cni/images && \
        mkdir -p /usr/src/multus-cni/bin
 COPY --from=builder /usr/src/multus-cni/bin /usr/src/multus-cni/bin
+COPY --from=builder /usr/src/multus-cni/test/bin/multus-cni-tests-ext.gz /usr/bin/multus-cni-tests-ext.gz
 ADD ./images/entrypoint.sh /
 
 LABEL io.k8s.display-name="Multus CNI" \
@@ -22,4 +25,3 @@ LABEL io.k8s.display-name="Multus CNI" \
       maintainer="Doug Smith <dosmith@redhat.com>"
 
 ENTRYPOINT ["/entrypoint.sh"]
-
