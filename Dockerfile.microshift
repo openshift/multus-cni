@@ -4,7 +4,7 @@ ADD . /usr/src/multus-cni
 WORKDIR /usr/src/multus-cni
 ENV CGO_ENABLED=1
 ENV GO111MODULE=on
-ENV GOFLAGS=-mod=mod
+ENV GOFLAGS=-mod=readonly
 ENV VERSION=rhel9 COMMIT=unset
 RUN ./hack/build-go.sh
 WORKDIR /
