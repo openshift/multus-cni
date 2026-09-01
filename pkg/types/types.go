@@ -17,7 +17,6 @@ package types
 
 import (
 	"net"
-	"sort"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/types"
@@ -177,17 +176,6 @@ type K8sArgs struct {
 type ResourceInfo struct {
 	Index     int
 	DeviceIDs []string
-}
-
-// SortDeviceIDs sorts DeviceIDs in each ResourceInfo in place so that device
-// order is deterministic across GetPodResourceMap callers (e.g. Multus and OVN-Kubernetes).
-func SortDeviceIDs(resourceMap map[string]*ResourceInfo) {
-	for _, rInfo := range resourceMap {
-		if rInfo == nil {
-			continue
-		}
-		sort.Strings(rInfo.DeviceIDs)
-	}
 }
 
 // ResourceClient provides a kubelet Pod resource handle
