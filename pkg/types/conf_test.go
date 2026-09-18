@@ -23,6 +23,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
 	types020 "github.com/containernetworking/cni/pkg/types/020"
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -1019,6 +1020,218 @@ var _ = Describe("config operations", func() {
 		Expect(*netconf.GatewayRequest).To(HaveLen(2))
 		Expect(netconf.IsFilterV4Gateway).To(BeFalse())
 		Expect(netconf.IsFilterV6Gateway).To(BeFalse())
+	})
+
+	It("LoadDelegateNetConfFromConfList preserves CNI-specific fields in CNINetworkConfigList", func() {
+		// Plugin-specific fields (kubeconfig, datastore_type, ...) are dropped
+		// from the structured NetConfList Bytes, but CNINetworkConfigList retains
+		// each plugin's raw bytes for the conflist fast path.
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"datastore_type": "kubernetes",
+					"nodename": "node-1",
+					"mtu": 1500,
+					"policy": {"type": "k8s"},
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"},
+					"ipam": {"type": "calico-ipam"}
+				},
+				{
+					"type": "portmap",
+					"capabilities": {"portMappings": true}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(delegate.CNINetworkConfigList.Name).To(Equal("k8s-pod-network"))
+		Expect(delegate.CNINetworkConfigList.CNIVersion).To(Equal("0.3.1"))
+		Expect(delegate.CNINetworkConfigList.Plugins).To(HaveLen(2))
+
+		var calico map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[0].Bytes, &calico)).To(Succeed())
+		Expect(calico["type"]).To(Equal("calico"))
+		Expect(calico["datastore_type"]).To(Equal("kubernetes"))
+		Expect(calico["nodename"]).To(Equal("node-1"))
+		Expect(calico["mtu"]).To(BeEquivalentTo(1500))
+		Expect(calico["policy"]).NotTo(BeNil())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+		ipam, ok := calico["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("calico-ipam"))
+
+		var portmap map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[1].Bytes, &portmap)).To(Succeed())
+		Expect(portmap["type"]).To(Equal("portmap"))
+		capabilities, ok := portmap["capabilities"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(capabilities["portMappings"]).To(BeTrue())
+	})
+
+	It("LoadDelegateNetConfFromConfList keeps appended plugins in CNINetworkConfigList", func() {
+		// libcni appends subdirectory-chain plugins into confList.Plugins but
+		// does NOT update confList.Bytes. CNINetworkConfigList carries the full
+		// plugin list for the conflist fast path.
+		base := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{"type": "calico", "kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(base))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(confList.Plugins).To(HaveLen(1))
+
+		appended, err := libcni.NetworkPluginConfFromBytes([]byte(`{"type": "bandwidth", "capabilities": {"bandwidth": true}}`))
+		Expect(err).NotTo(HaveOccurred())
+		confList.Plugins = append(confList.Plugins, appended)
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(delegate.CNINetworkConfigList.Plugins).To(HaveLen(2))
+		Expect(string(delegate.CNINetworkConfigList.Plugins[1].Bytes)).To(ContainSubstring("bandwidth"))
+	})
+
+	It("LoadDelegateNetConfFromConfList populates CNINetworkConfigList for fast path", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delegate.CNINetworkConfigList.Plugins).NotTo(BeEmpty())
+		Expect(string(delegate.CNINetworkConfigList.Plugins[0].Bytes)).To(ContainSubstring("/etc/cni/net.d/calico-kubeconfig"))
+	})
+
+	It("LoadDelegateNetConfFromConfList re-syncs CNINetworkConfigList when deviceID is set", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [{"type": "sriov", "ipam": {"type": "host-local"}}]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "0000:00:00.0", "resource1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delegate.DeviceID).To(Equal("0000:00:00.0"))
+		Expect(delegate.CNINetworkConfigList.Plugins).NotTo(BeEmpty())
+
+		var plugin map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[0].Bytes, &plugin)).To(Succeed())
+		Expect(plugin["deviceID"]).To(Equal("0000:00:00.0"))
+		ipam, ok := plugin["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("host-local"))
+	})
+
+	It("PrepareDelegateForCache preserves CNI-specific fields in Bytes for cached DEL", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"datastore_type": "kubernetes",
+					"nodename": "node-1",
+					"mtu": 1500,
+					"policy": {"type": "k8s"},
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"},
+					"ipam": {"type": "calico-ipam"}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Bytes are lossless from load; PrepareDelegateForCache aligns Bytes with
+		// CNINetworkConfigList before scratch-cache serialization.
+		var beforeCache map[string]interface{}
+		Expect(json.Unmarshal(delegate.Bytes, &beforeCache)).To(Succeed())
+		beforePlugins, ok := beforeCache["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		beforeCalico, ok := beforePlugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(beforeCalico["datastore_type"]).To(Equal("kubernetes"))
+		beforeK8s, ok := beforeCalico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(beforeK8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+
+		Expect(PrepareDelegateForCache(delegate)).To(Succeed())
+
+		var parsed map[string]interface{}
+		Expect(json.Unmarshal(delegate.Bytes, &parsed)).To(Succeed())
+		Expect(parsed["name"]).To(Equal("k8s-pod-network"))
+		Expect(parsed["cniVersion"]).To(Equal("0.3.1"))
+		plugins, ok := parsed["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(plugins).To(HaveLen(1))
+
+		calico, ok := plugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(calico["type"]).To(Equal("calico"))
+		Expect(calico["datastore_type"]).To(Equal("kubernetes"))
+		Expect(calico["nodename"]).To(Equal("node-1"))
+		Expect(calico["mtu"]).To(BeEquivalentTo(1500))
+		Expect(calico["policy"]).NotTo(BeNil())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+		ipam, ok := calico["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("calico-ipam"))
+	})
+
+	It("InjectCNIVersionInConfList sets cniVersion without dropping fields", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"plugins": [
+				{"type": "calico", "kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}}
+			]
+		}`
+
+		out, err := InjectCNIVersionInConfList([]byte(conflist), "0.3.1")
+		Expect(err).NotTo(HaveOccurred())
+
+		var parsed map[string]interface{}
+		Expect(json.Unmarshal(out, &parsed)).To(Succeed())
+		Expect(parsed["cniVersion"]).To(Equal("0.3.1"))
+
+		plugins, ok := parsed["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		calico, ok := plugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
 	})
 
 })
