@@ -100,7 +100,7 @@ type BandwidthEntry struct {
 type DelegateNetConf struct {
 	Conf                  types.NetConf
 	ConfList              types.NetConfList
-	CNINetworkConfigList  libcni.NetworkConfigList
+	CNINetworkConfigList  libcni.NetworkConfigList `json:"-"` // only used internal housekeeping
 	Name                  string
 	IfnameRequest         string          `json:"ifnameRequest,omitempty"`
 	MacRequest            string          `json:"macRequest,omitempty"`
