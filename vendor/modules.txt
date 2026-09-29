@@ -201,7 +201,7 @@ go.yaml.in/yaml/v2
 # go.yaml.in/yaml/v3 v3.0.4
 ## explicit; go 1.16
 go.yaml.in/yaml/v3
-# golang.org/x/net v0.49.0 => github.com/openshift-sustaining/net v0.50.0-sec.3
+# golang.org/x/net v0.49.0 => github.com/openshift-sustaining/net v0.50.0-sec.4
 ## explicit; go 1.24.0
 golang.org/x/net/context
 golang.org/x/net/html
@@ -877,4 +877,4 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
-# golang.org/x/net => github.com/openshift-sustaining/net v0.50.0-sec.3
+# golang.org/x/net => github.com/openshift-sustaining/net v0.50.0-sec.4
