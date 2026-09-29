@@ -211,7 +211,7 @@ github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.4
 ## explicit; go 1.17
 github.com/vishvananda/netns
-# golang.org/x/net v0.25.0 => github.com/openshift-sustaining/net v0.35.0-sec.3
+# golang.org/x/net v0.25.0 => github.com/openshift-sustaining/net v0.35.0-sec.4
 ## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/html
@@ -839,7 +839,7 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
-# golang.org/x/net => github.com/openshift-sustaining/net v0.35.0-sec.3
+# golang.org/x/net => github.com/openshift-sustaining/net v0.35.0-sec.4
 # k8s.io/api => k8s.io/api v0.29.0
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.29.0
 # k8s.io/apimachinery => k8s.io/apimachinery v0.29.0
