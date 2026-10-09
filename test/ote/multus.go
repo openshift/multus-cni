@@ -35,7 +35,7 @@ const (
 	imagePython39 = "registry.access.redhat.com/ubi9/python-39:latest"
 )
 
-var _ = g.Describe("[sig-network][OTP][Suite:openshift/conformance/parallel] Multus CNI", func() {
+var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 	var (
 		oc        = exutil.NewCLI("multus-cni")
 		clientset kubernetes.Interface
@@ -1236,7 +1236,7 @@ python3 /tmp/server.py`,
 		}
 	})
 
-	g.It("[JIRA:Networking][OTP][Serial][Disruptive] 74933-should reconcile whereabouts IPs after forced node reboot", g.Label("Serial"), func() {
+	g.It("[JIRA:Networking][OTP][Disruptive] 74933-should reconcile whereabouts IPs after forced node reboot", g.Serial, func() {
 		// NOTE: This is a disruptive test that force reboots a node
 		// It runs in serial CI jobs (e.g., e2e-aws-ovn-serial) designed for such tests
 		// Related: OCPBUGS-35923, OCPBUGS-16008
