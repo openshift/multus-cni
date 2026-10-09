@@ -6,7 +6,7 @@ ENV CGO_ENABLED=1
 ENV GO111MODULE=on
 ENV GOFLAGS=-mod=readonly
 ENV VERSION=rhel9 COMMIT=unset
-RUN ./hack/build-go.sh
+RUN GO111MODULE=on go mod vendor && ./hack/build-go.sh
 WORKDIR /
 
 FROM registry.ci.openshift.org/ocp/5.0:base-rhel9
