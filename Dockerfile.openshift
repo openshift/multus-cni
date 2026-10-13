@@ -1,0 +1,25 @@
+# This dockerfile is specific to building Multus for OpenShift
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-4.22 AS rhel9
+ADD . /usr/src/multus-cni
+WORKDIR /usr/src/multus-cni
+ENV CGO_ENABLED=1
+ENV GO111MODULE=off
+ENV VERSION=rhel9 COMMIT=unset
+RUN ./hack/build-go.sh && \
+       cd /usr/src/multus-cni/bin
+WORKDIR /
+
+FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+RUN dnf install -y util-linux && dnf clean all && \
+       mkdir -p /usr/src/multus-cni/images && \
+       mkdir -p /usr/src/multus-cni/bin
+COPY --from=rhel9 /usr/src/multus-cni/bin /usr/src/multus-cni/bin
+ADD ./images/entrypoint.sh /
+
+LABEL io.k8s.display-name="Multus CNI" \
+      io.k8s.description="This is a component of OpenShift Container Platform and provides a meta CNI plugin." \
+      io.openshift.tags="openshift" \
+      maintainer="Doug Smith <dosmith@redhat.com>"
+
+ENTRYPOINT ["/entrypoint.sh"]
+

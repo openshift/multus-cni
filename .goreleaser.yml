@@ -1,0 +1,63 @@
+# This is an example goreleaser.yaml file with some sane defaults.
+# Make sure to check the documentation at http://goreleaser.com
+env:
+  - GO111MODULE=on
+before:
+  hooks:
+    - go mod download
+builds:
+  - env:
+      - CGO_ENABLED=0
+    id: multus
+    binary: multus
+    main: ./cmd/multus
+    goos:
+      - linux
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+      - s390x
+    ldflags:
+      - -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.version={{ .Tag }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.commit={{ .Commit }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.date={{ .Date }}
+  - env:
+      - CGO_ENABLED=0
+    id: multus-daemon
+    binary: multus-daemon
+    main: ./cmd/multus-daemon
+    goos:
+      - linux
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+      - s390x
+    ldflags:
+      - -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.version={{ .Tag }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.commit={{ .Commit }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.date={{ .Date }}
+  - env:
+      - CGO_ENABLED=0
+    id: multus-shim
+    binary: multus-shim
+    main: ./cmd/multus-shim
+    goos:
+      - linux
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+      - s390x
+    ldflags:
+      - -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.version={{ .Tag }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.commit={{ .Commit }} -X gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/multus.date={{ .Date }}
+archives:
+  - wrap_in_directory: true
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-snapshot"
+#release:
+#  draft: true
+changelog:
+  skip: true

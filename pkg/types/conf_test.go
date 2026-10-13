@@ -1,0 +1,1237 @@
+// Copyright (c) 2018 Intel Corporation
+// Copyright (c) 2021 Multus Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package types
+
+// disable dot-imports only for testing
+//revive:disable:dot-imports
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/containernetworking/cni/libcni"
+	"github.com/containernetworking/cni/pkg/skel"
+	types020 "github.com/containernetworking/cni/pkg/types/020"
+	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/containernetworking/plugins/pkg/testutils"
+	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	testhelpers "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+func TestConf(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "conf")
+}
+
+var _ = Describe("config operations", func() {
+	var testNS ns.NetNS
+	var tmpDir string
+
+	BeforeEach(func() {
+		// Create a new NetNS so we don't modify the host
+		var err error
+		testNS, err = testutils.NewNS()
+		Expect(err).NotTo(HaveOccurred())
+		os.Setenv("CNI_PATH", "/some/path")
+
+		tmpDir, err = os.MkdirTemp("", "multus_tmp")
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		Expect(testNS.Close()).To(Succeed())
+		os.Unsetenv("CNI_PATH")
+		os.Unsetenv("CNI_ARGS")
+		err := os.RemoveAll(tmpDir)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("parses a valid multus configuration", func() {
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus",
+    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+    "delegates": [{
+        "type": "weave-net"
+    }],
+	"runtimeConfig": {
+      "portMappings": [
+        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+      ]
+    }
+
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.Delegates).To(HaveLen(1))
+		Expect(netConf.Delegates[0].Conf.Type).To(Equal("weave-net"))
+		Expect(netConf.Delegates[0].MasterPlugin).To(BeTrue())
+		Expect(netConf.RuntimeConfig.PortMaps).To(HaveLen(1))
+	})
+
+	It("fails to load invalid multus configuration (bad json)", func() {
+		conf := `{
+	  "name": "node-cni-network",
+	  "type": "multus",
+	  "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	  "delegates": [{
+	      "type": "weave-net"
+	  }],
+	"runtimeConfig": {
+	    "portMappings": [
+	      {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+	    ]
+		}`
+		// Error in conf json: missing end bracket
+
+		_, err := LoadNetConf([]byte(conf))
+		Expect(err).To(HaveOccurred())
+		_, err = LoadDelegateNetConf([]byte(conf), nil, "", "")
+		Expect(err).To(HaveOccurred())
+		err = LoadDelegateNetConfList([]byte(conf), &DelegateNetConf{})
+		Expect(err).To(HaveOccurred())
+		_, err = addDeviceIDInConfList([]byte(conf), "")
+		Expect(err).To(HaveOccurred())
+		_, err = delegateAddDeviceID([]byte(conf), "")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("checks if logFile and logLevel are set correctly", func() {
+		conf := `{
+	"name": "node-cni-network",
+	"type": "multus",
+	"logLevel": "debug",
+	"logFile": "/var/log/multus.log",
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.LogLevel).To(Equal("debug"))
+		Expect(netConf.LogFile).To(Equal("/var/log/multus.log"))
+	})
+
+	It("checks if logOptions are set correctly", func() {
+		conf := `{
+	"name": "node-cni-network",
+	"type": "multus",
+	"logOptions": {
+		"maxAge": 5,
+		"maxSize": 100,
+		"maxBackups": 5,
+		"compress": true
+	},
+	"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	"delegates": [{
+		"type": "weave-net"
+	}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+		]
+	}
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*netConf.LogOptions.MaxAge).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxBackups).To(Equal(5))
+		Expect(*netConf.LogOptions.MaxSize).To(Equal(100))
+		Expect(*netConf.LogOptions.Compress).To(BeTrue())
+	})
+
+	It("properly sets namespace isolation using the default namespace", func() {
+		conf := `{
+	    "name": "node-cni-network",
+	    "type": "multus",
+	    "logLevel": "debug",
+	    "logFile": "/var/log/multus.log",
+	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	    "namespaceIsolation": true,
+	    "delegates": [{
+	        "type": "weave-net"
+	    }]
+	}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.NamespaceIsolation).To(BeTrue())
+		Expect(netConf.NonIsolatedNamespaces).To(HaveLen(1))
+		Expect(netConf.NonIsolatedNamespaces[0]).To(Equal("default"))
+	})
+
+	It("properly sets namespace isolation using custom namespaces", func() {
+		conf := `{
+	    "name": "node-cni-network",
+	    "type": "multus",
+	    "logLevel": "debug",
+	    "logFile": "/var/log/multus.log",
+	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+	    "namespaceIsolation": true,
+	    "globalNamespaces": " foo,bar ,default",
+	    "delegates": [{
+	        "type": "weave-net"
+	    }]
+	}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.NamespaceIsolation).To(BeTrue())
+		Expect(netConf.NonIsolatedNamespaces).To(HaveLen(3))
+		Expect(netConf.NonIsolatedNamespaces[0]).To(Equal("foo"))
+		Expect(netConf.NonIsolatedNamespaces[1]).To(Equal("bar"))
+		Expect(netConf.NonIsolatedNamespaces[2]).To(Equal("default"))
+	})
+
+	It("prevResult with no errors", func() {
+		conf := `{
+	    "name": "node-cni-network",
+			"type": "multus",
+	    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"prevResult": {
+				"ips": [
+					{
+						"version": "4",
+						"address": "10.0.0.5/32",
+						"interface": 2
+					}
+			]},
+			"delegates": [{
+	        "type": "weave-net"
+			}],
+		"runtimeConfig": {
+	      "portMappings": [
+	        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+	      ]
+	    }
+
+	}`
+		_, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("succeeds if only delegates are set", func() {
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus",
+    "delegates": [{
+        "type": "weave-net"
+    },{
+        "type": "foobar"
+    }]
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.Delegates).To(HaveLen(2))
+		Expect(netConf.Delegates[0].Conf.Type).To(Equal("weave-net"))
+		Expect(netConf.Delegates[0].MasterPlugin).To(BeTrue())
+		Expect(netConf.Delegates[1].Conf.Type).To(Equal("foobar"))
+		Expect(netConf.Delegates[1].MasterPlugin).To(BeFalse())
+	})
+
+	It("fails if no kubeconfig or delegates are set", func() {
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus"
+}`
+		_, err := LoadNetConf([]byte(conf))
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("fails if kubeconfig is present but no delegates are set", func() {
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus",
+    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml"
+}`
+		_, err := LoadNetConf([]byte(conf))
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("fails when delegate field exists but fields are named incorrectly", func() {
+		conf := `{
+	"name": "node-cni-network",
+		"type": "multus",
+    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+		"prevResult": {
+			"ips": [
+				{
+					"version": "4",
+					"address": "10.0.0.5/32",
+					"interface": 2
+				}
+			]
+		},
+		"delegates": [{
+			"_not_type": "weave-net"
+		}],
+	"runtimeConfig": {
+		"portMappings": [
+			{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+	    ]
+	}
+}`
+		_, err := LoadNetConf([]byte(conf))
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("has defaults set for network readiness", func() {
+		conf := `{
+    "name": "defaultnetwork",
+    "type": "multus",
+    "kubeconfig": "/etc/kubernetes/kubelet.conf",
+    "delegates": [{
+      "cniVersion": "0.3.0",
+      "name": "defaultnetwork",
+      "type": "flannel",
+      "isDefaultGateway": true
+    }]
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.ReadinessIndicatorFile).To(Equal(""))
+	})
+
+	It("honors overrides for network readiness", func() {
+		conf := `{
+    "name": "defaultnetwork",
+    "type": "multus",
+    "readinessindicatorfile": "/etc/cni/net.d/foo",
+    "kubeconfig": "/etc/kubernetes/kubelet.conf",
+    "delegates": [{
+      "cniVersion": "0.3.0",
+      "name": "defaultnetwork",
+      "type": "flannel",
+      "isDefaultGateway": true
+    }]
+}`
+		netConf, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netConf.ReadinessIndicatorFile).To(Equal("/etc/cni/net.d/foo"))
+	})
+
+	It("check CheckSystemNamespaces() works fine", func() {
+		b1 := CheckSystemNamespaces("foobar", []string{"barfoo", "bafoo", "foobar"})
+		Expect(b1).To(BeTrue())
+		b2 := CheckSystemNamespaces("foobar1", []string{"barfoo", "bafoo", "foobar"})
+		Expect(b2).To(BeFalse())
+	})
+
+	It("assigns deviceID in delegated conf", func() {
+		conf := `{
+    "name": "second-network",
+    "type": "sriov"
+}`
+		type sriovNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			DeviceID string `json:"deviceID"`
+		}
+		sriovConf := &sriovNetConf{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.0", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &sriovConf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sriovConf.DeviceID).To(Equal("0000:00:00.0"))
+	})
+
+	It("assigns deviceID in delegated conf list", func() {
+		conf := `{
+    "name": "second-network",
+    "plugins": [
+      {
+        "type": "sriov"
+      }
+    ]
+}`
+		type sriovNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			DeviceID string `json:"deviceID"`
+		}
+		type sriovNetConfList struct {
+			Plugins []*sriovNetConf `json:"plugins"`
+		}
+		sriovConfList := &sriovNetConfList{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.1", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &sriovConfList)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(sriovConfList.Plugins[0].DeviceID).To(Equal("0000:00:00.1"))
+	})
+
+	It("assigns deviceID in delegated conf list multiple plugins", func() {
+		conf := `{
+    "name": "second-network",
+    "plugins": [
+      {
+        "type": "sriov"
+      },
+      {
+        "type": "other-cni"
+      }
+    ]
+}`
+		type sriovNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			DeviceID string `json:"deviceID"`
+		}
+		type sriovNetConfList struct {
+			Plugins []*sriovNetConf `json:"plugins"`
+		}
+		sriovConfList := &sriovNetConfList{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.1", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &sriovConfList)
+		Expect(err).NotTo(HaveOccurred())
+		for _, plugin := range sriovConfList.Plugins {
+			Expect(plugin.DeviceID).To(Equal("0000:00:00.1"))
+		}
+	})
+
+	It("assigns pciBusID in delegated conf", func() {
+		conf := `{
+    "name": "second-network",
+    "type": "host-device"
+}`
+		type hostDeviceNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			PCIBusID string `json:"pciBusID"`
+		}
+		hostDeviceConf := &hostDeviceNetConf{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.2", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &hostDeviceConf)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hostDeviceConf.PCIBusID).To(Equal("0000:00:00.2"))
+	})
+
+	It("assigns pciBusID in delegated conf list", func() {
+		conf := `{
+    "name": "second-network",
+    "plugins": [
+      {
+        "type": "host-device"
+      }
+    ]
+}`
+		type hostDeviceNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			PCIBusID string `json:"pciBusID"`
+		}
+		type hostDeviceNetConfList struct {
+			Plugins []*hostDeviceNetConf `json:"plugins"`
+		}
+		hostDeviceConfList := &hostDeviceNetConfList{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.3", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &hostDeviceConfList)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(hostDeviceConfList.Plugins[0].PCIBusID).To(Equal("0000:00:00.3"))
+	})
+
+	It("assigns pciBusID in delegated conf list multiple plugins", func() {
+		conf := `{
+    "name": "second-network",
+    "plugins": [
+      {
+        "type": "host-device"
+      },
+      {
+        "type": "other-cni"
+      }
+    ]
+}`
+		type hostDeviceNetConf struct {
+			Name     string `json:"name"`
+			Type     string `json:"type"`
+			PCIBusID string `json:"pciBusID"`
+		}
+		type hostDeviceNetConfList struct {
+			Plugins []*hostDeviceNetConf `json:"plugins"`
+		}
+		hostDeviceConfList := &hostDeviceNetConfList{}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.3", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = json.Unmarshal(delegateNetConf.Bytes, &hostDeviceConfList)
+		Expect(err).NotTo(HaveOccurred())
+		for _, plugin := range hostDeviceConfList.Plugins {
+			Expect(plugin.PCIBusID).To(Equal("0000:00:00.3"))
+		}
+	})
+
+	It("add cni-args in config", func() {
+		var args map[string]interface{}
+		conf := `{
+    "name": "second-network",
+    "type": "bridge"
+}`
+		cniArgs := `{
+    "args1": "val1"
+}`
+		type bridgeNetConf struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+			Args struct {
+				CNI map[string]string `json:"cni"`
+			} `json:"args"`
+		}
+
+		err := json.Unmarshal([]byte(cniArgs), &args)
+		Expect(err).NotTo(HaveOccurred())
+		net := &NetworkSelectionElement{
+			Name:    "test-elem",
+			CNIArgs: &args,
+		}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), net, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		bridgeConf := &bridgeNetConf{}
+		err = json.Unmarshal(delegateNetConf.Bytes, bridgeConf)
+		Expect(bridgeConf.Args.CNI["args1"]).To(Equal("val1"))
+	})
+
+	It("add cni-args in config which has cni args already (merge case)", func() {
+		var args map[string]interface{}
+		conf := `{
+    "name": "second-network",
+    "type": "bridge",
+    "args": {
+       "cni": {
+         "args0": "val0",
+         "args1": "val1"
+       }
+    }
+}`
+		cniArgs := `{
+    "args1": "val1a"
+}`
+		type bridgeNetConf struct {
+			Name string `json:"name"`
+			Type string `json:"type"`
+			Args struct {
+				CNI map[string]string `json:"cni"`
+			} `json:"args"`
+		}
+
+		err := json.Unmarshal([]byte(cniArgs), &args)
+		Expect(err).NotTo(HaveOccurred())
+		net := &NetworkSelectionElement{
+			Name:    "test-elem",
+			CNIArgs: &args,
+		}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), net, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		bridgeConf := &bridgeNetConf{}
+		err = json.Unmarshal(delegateNetConf.Bytes, bridgeConf)
+		Expect(bridgeConf.Args.CNI["args0"]).To(Equal("val0"))
+		Expect(bridgeConf.Args.CNI["args1"]).To(Equal("val1a"))
+	})
+
+	It("add cni-args in conflist", func() {
+		var args map[string]interface{}
+		conf := `{
+    "name": "second-network",
+    "plugins": [
+      {
+        "type": "bridge"
+      }
+    ]
+}`
+		cniArgs := `{
+    "args1": "val1"
+}`
+		type bridgeNetConf struct {
+			Type string `json:"type"`
+			Args struct {
+				CNI map[string]string `json:"cni"`
+			} `json:"args"`
+		}
+		type bridgeNetConfList struct {
+			Name    string           `json:"name"`
+			Plugins []*bridgeNetConf `json:"plugins"`
+		}
+
+		err := json.Unmarshal([]byte(cniArgs), &args)
+		Expect(err).NotTo(HaveOccurred())
+		net := &NetworkSelectionElement{
+			Name:    "test-elem",
+			CNIArgs: &args,
+		}
+		delegateNetConf, err := LoadDelegateNetConf([]byte(conf), net, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		bridgeConflist := &bridgeNetConfList{}
+		err = json.Unmarshal(delegateNetConf.Bytes, bridgeConflist)
+		Expect(bridgeConflist.Plugins[0].Args.CNI["args1"]).To(Equal("val1"))
+	})
+
+	It("creates a valid CNI runtime config", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+			StdinData: []byte(`{
+    "name": "node-cni-network",
+    "type": "multus",
+    "readinessindicatorfile": "/tmp/foo.multus.conf",
+    "defaultnetworkwaitseconds": 3,
+    "delegates": [{
+        "name": "weave1",
+        "cniVersion": "0.2.0",
+        "type": "weave-net"
+    },{
+        "name": "other1",
+        "cniVersion": "0.2.0",
+        "type": "other-plugin"
+    }]
+}`),
+		}
+
+		k8sArgs := &K8sArgs{K8S_POD_NAME: "dummy", K8S_POD_NAMESPACE: "namespacedummy", K8S_POD_INFRA_CONTAINER_ID: "123456789"}
+
+		rc := &RuntimeConfig{}
+		rc.PortMaps = make([]*PortMapEntry, 2)
+
+		rc.PortMaps[0] = &PortMapEntry{
+			HostPort:      0,
+			ContainerPort: 1,
+			Protocol:      "sampleProtocol",
+			HostIP:        "sampleHostIP",
+		}
+		rc.PortMaps[1] = &PortMapEntry{
+			HostPort:      1,
+			ContainerPort: 2,
+			Protocol:      "anotherSampleProtocol",
+			HostIP:        "anotherSampleHostIP",
+		}
+
+		rt, _ := CreateCNIRuntimeConf(args, k8sArgs, "", rc, nil)
+		fmt.Println("rt.ContainerID: ", rt.ContainerID)
+		Expect(rt.ContainerID).To(Equal("123456789"))
+		Expect(rt.NetNS).To(Equal(args.Netns))
+		Expect(rt.IfName).To(Equal(""))
+		Expect(rt.CapabilityArgs["portMappings"]).To(Equal(rc.PortMaps))
+	})
+
+	It("creates a valid CNI runtime config with K8s args passed via CNI_ARGS environment variable", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "123456789",
+			Netns:       testNS.Path(),
+			IfName:      "eth0",
+			StdinData: []byte(`{
+    "name": "node-cni-network",
+    "type": "multus",
+    "readinessindicatorfile": "/tmp/foo.multus.conf",
+    "defaultnetworkwaitseconds": 3,
+    "delegates": [{
+        "name": "weave1",
+        "cniVersion": "0.2.0",
+        "type": "weave-net"
+    },{
+        "name": "other1",
+        "cniVersion": "0.2.0",
+        "type": "other-plugin"
+    }]
+}`),
+		}
+
+		os.Setenv("CNI_ARGS", "K8S_POD_NAME=dummy;K8S_POD_NAMESPACE=namespacedummy;K8S_POD_INFRA_CONTAINER_ID=123456789;K8S_POD_UID=aaaaa;BLAHBLAH=foo=bar")
+		k8sArgs := &K8sArgs{}
+		rt, _ := CreateCNIRuntimeConf(args, k8sArgs, "", &RuntimeConfig{}, nil)
+		fmt.Println("rt.ContainerID: ", rt.ContainerID)
+		Expect(rt.ContainerID).To(Equal("123456789"))
+		Expect(rt.NetNS).To(Equal(args.Netns))
+		Expect(rt.IfName).To(Equal(""))
+		fmt.Println("rt.ContainerID: ", rt.ContainerID)
+		Expect(rt.Args[0]).To(Equal([2]string{"IgnoreUnknown", "true"}))
+		Expect(rt.Args[1]).To(Equal([2]string{"K8S_POD_NAMESPACE", "namespacedummy"}))
+		Expect(rt.Args[2]).To(Equal([2]string{"K8S_POD_NAME", "dummy"}))
+		Expect(rt.Args[3]).To(Equal([2]string{"K8S_POD_INFRA_CONTAINER_ID", "123456789"}))
+		Expect(rt.Args[4]).To(Equal([2]string{"K8S_POD_UID", "aaaaa"}))
+		Expect(rt.Args[5]).To(Equal([2]string{"BLAHBLAH", "foo=bar"}))
+	})
+
+	It("can loadnetworkstatus", func() {
+		result := &types020.Result{
+			CNIVersion: "0.2.0",
+			IP4: &types020.IPConfig{
+				IP: *testhelpers.EnsureCIDR("1.1.1.2/24"),
+			},
+		}
+
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus",
+    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+    "delegates": [{
+        "type": "weave-net"
+    }],
+  "runtimeConfig": {
+      "portMappings": [
+        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+      ]
+    }
+}`
+
+		delegate, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.0", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		delegateNetStatuses, err := netutils.CreateNetworkStatuses(result, delegate.Conf.Name, delegate.MasterPlugin, nil)
+
+		GinkgoT().Logf("delegateNetStatuses %+v\n", delegateNetStatuses)
+
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("cannot loadnetworkstatus given incompatible CNIVersion", func() {
+
+		result := &testhelpers.Result{
+			CNIVersion: "1.2.3",
+			IP4: &types020.IPConfig{
+				IP: *testhelpers.EnsureCIDR("1.1.1.2/24"),
+			},
+		}
+
+		conf := `{
+    "name": "node-cni-network",
+    "type": "multus",
+    "kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+    "delegates": [{
+        "type": "weave-net"
+    }],
+  "runtimeConfig": {
+      "portMappings": [
+        {"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+      ]
+    }
+}`
+
+		delegate, err := LoadDelegateNetConf([]byte(conf), nil, "0000:00:00.0", "")
+		Expect(err).NotTo(HaveOccurred())
+		fmt.Println("result.Version: ", result.Version())
+		delegateNetStatuses, err := netutils.CreateNetworkStatuses(result, delegate.Conf.Name, delegate.MasterPlugin, nil)
+
+		GinkgoT().Logf("delegateNetStatuses %+v\n", delegateNetStatuses)
+
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("verify the network selection elements goes into delegateconf", func() {
+		cniConfig := `{
+        "name": "weave1",
+        "cniVersion": "0.2.0",
+        "type": "weave-net"
+    }`
+		bandwidthEntry1 := &BandwidthEntry{
+			IngressRate:  100,
+			IngressBurst: 200,
+			EgressRate:   100,
+			EgressBurst:  200,
+		}
+
+		portMapEntry1 := &PortMapEntry{
+			HostPort:      8080,
+			ContainerPort: 80,
+			Protocol:      "tcp",
+			HostIP:        "10.0.0.1",
+		}
+
+		networkSelection := &NetworkSelectionElement{
+			Name:                  "testname",
+			InterfaceRequest:      "testIF1",
+			MacRequest:            "c2:11:22:33:44:66",
+			InfinibandGUIDRequest: "24:8a:07:03:00:8d:ae:2e",
+			IPRequest:             []string{"10.0.0.1/24"},
+			BandwidthRequest:      bandwidthEntry1,
+			PortMappingsRequest:   []*PortMapEntry{portMapEntry1},
+		}
+
+		delegateConf, err := LoadDelegateNetConf([]byte(cniConfig), networkSelection, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delegateConf.IfnameRequest).To(Equal(networkSelection.InterfaceRequest))
+		Expect(delegateConf.MacRequest).To(Equal(networkSelection.MacRequest))
+		Expect(delegateConf.InfinibandGUIDRequest).To(Equal(networkSelection.InfinibandGUIDRequest))
+		Expect(delegateConf.IPRequest).To(Equal(networkSelection.IPRequest))
+		Expect(delegateConf.BandwidthRequest).To(Equal(networkSelection.BandwidthRequest))
+		Expect(delegateConf.PortMappingsRequest).To(Equal(networkSelection.PortMappingsRequest))
+	})
+
+	It("test mergeCNIRuntimeConfig with masterPlugin", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave",
+				"type": "weave-net"
+			}],
+		  "runtimeConfig": {
+			  "portMappings": [
+				{"hostPort": 8080, "containerPort": 80, "protocol": "tcp"}
+			  ]
+			}
+		}`
+		bandwidthEntry1 := &BandwidthEntry{
+			IngressRate:  100,
+			IngressBurst: 200,
+			EgressRate:   100,
+			EgressBurst:  200,
+		}
+		portMapEntry1 := &PortMapEntry{
+			HostPort:      8080,
+			ContainerPort: 80,
+			Protocol:      "tcp",
+			HostIP:        "10.0.0.1",
+		}
+
+		networkSelection := &NetworkSelectionElement{
+			Name:                  "testname",
+			InterfaceRequest:      "testIF1",
+			MacRequest:            "c2:11:22:33:44:66",
+			InfinibandGUIDRequest: "24:8a:07:03:00:8d:ae:2e",
+			IPRequest:             []string{"10.0.0.1/24"},
+			BandwidthRequest:      bandwidthEntry1,
+			PortMappingsRequest:   []*PortMapEntry{portMapEntry1},
+		}
+		delegate, err := LoadDelegateNetConf([]byte(conf), networkSelection, "", "")
+		delegate.MasterPlugin = true
+		origRuntimeConfig := RuntimeConfig{}
+		Expect(err).NotTo(HaveOccurred())
+		runtimeConf := mergeCNIRuntimeConfig(&origRuntimeConfig, delegate)
+		Expect(runtimeConf.PortMaps).To(BeNil())
+		Expect(runtimeConf.Bandwidth).To(BeNil())
+		Expect(runtimeConf.InfinibandGUID).To(Equal(""))
+		// The original RuntimeConfig must have not been overwritten
+		Expect(origRuntimeConfig).To(Equal(RuntimeConfig{}))
+	})
+
+	It("test mergeCNIRuntimeConfig with delegate plugin", func() {
+		conf := `{
+			"name": "weave1",
+			"cniVersion": "0.2.0",
+			"type": "weave-net"
+		}`
+		bandwidthEntry1 := &BandwidthEntry{
+			IngressRate:  100,
+			IngressBurst: 200,
+			EgressRate:   100,
+			EgressBurst:  200,
+		}
+		portMapEntry1 := &PortMapEntry{
+			HostPort:      8080,
+			ContainerPort: 80,
+			Protocol:      "tcp",
+			HostIP:        "10.0.0.1",
+		}
+
+		networkSelection := &NetworkSelectionElement{
+			Name:                  "testname",
+			InterfaceRequest:      "testIF1",
+			MacRequest:            "c2:11:22:33:44:66",
+			InfinibandGUIDRequest: "24:8a:07:03:00:8d:ae:2e",
+			IPRequest:             []string{"10.0.0.1/24"},
+			BandwidthRequest:      bandwidthEntry1,
+			PortMappingsRequest:   []*PortMapEntry{portMapEntry1},
+		}
+		origRuntimeConfig := RuntimeConfig{}
+		delegate, err := LoadDelegateNetConf([]byte(conf), networkSelection, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		runtimeConf := mergeCNIRuntimeConfig(&origRuntimeConfig, delegate)
+		Expect(runtimeConf.PortMaps).NotTo(BeNil())
+		Expect(runtimeConf.PortMaps).To(HaveLen(1))
+		Expect(runtimeConf.PortMaps[0]).To(Equal(portMapEntry1))
+		Expect(runtimeConf.Bandwidth).To(Equal(bandwidthEntry1))
+		Expect(runtimeConf.IPs).To(HaveLen(1))
+		Expect(runtimeConf.Mac).To(Equal("c2:11:22:33:44:66"))
+		Expect(runtimeConf.InfinibandGUID).To(Equal("24:8a:07:03:00:8d:ae:2e"))
+		// The original RuntimeConfig must have not been overwritten
+		Expect(origRuntimeConfig).To(Equal(RuntimeConfig{}))
+	})
+
+	It("test DelegateConf Name is delivered", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave",
+				"type": "weave-net"
+			}]
+		}`
+
+		n, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(n.Delegates).To(HaveLen(1))
+		Expect(n.Delegates[0].Name).To(Equal("weave"))
+	})
+
+	It("test DelegateConfList Name is delivered", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		n, err := LoadNetConf([]byte(conf))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(n.Delegates).To(HaveLen(1))
+		Expect(n.Delegates[0].Name).To(Equal("weave-list"))
+	})
+
+	It("test LoadDelegateNetConf keeps without GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar" }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).To(BeNil())
+		Expect(netconf.IsFilterV4Gateway).To(BeTrue())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps empty GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(BeEmpty())
+		Expect(netconf.IsFilterV4Gateway).To(BeTrue())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [ "10.1.1.1" ] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(HaveLen(1))
+		Expect(netconf.IsFilterV4Gateway).To(BeFalse())
+		Expect(netconf.IsFilterV6Gateway).To(BeTrue())
+	})
+
+	It("test LoadDelegateNetConf keeps dual GatewayRequest", func() {
+		conf := `{
+			"name": "node-cni-network",
+			"type": "multus",
+			"kubeconfig": "/etc/kubernetes/node-kubeconfig.yaml",
+			"delegates": [{
+				"name": "weave-list",
+				"plugins": [ {"type" :"weave"} ]
+			}]
+		}`
+
+		nsJSON := `{ "name": "foobar", "default-route": [ "10.1.1.1", "fc00::1" ] }`
+		ns := &NetworkSelectionElement{}
+
+		err := json.Unmarshal([]byte(nsJSON), ns)
+		Expect(err).NotTo(HaveOccurred())
+
+		netconf, err := LoadDelegateNetConf([]byte(conf), ns, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(CheckGatewayConfig([]*DelegateNetConf{netconf})).To(Succeed())
+
+		Expect(netconf.GatewayRequest).NotTo(BeNil())
+		Expect(*netconf.GatewayRequest).To(HaveLen(2))
+		Expect(netconf.IsFilterV4Gateway).To(BeFalse())
+		Expect(netconf.IsFilterV6Gateway).To(BeFalse())
+	})
+
+	It("LoadDelegateNetConfFromConfList preserves CNI-specific fields in CNINetworkConfigList", func() {
+		// Plugin-specific fields (kubeconfig, datastore_type, ...) are dropped
+		// from the structured NetConfList Bytes, but CNINetworkConfigList retains
+		// each plugin's raw bytes for the conflist fast path.
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"datastore_type": "kubernetes",
+					"nodename": "node-1",
+					"mtu": 1500,
+					"policy": {"type": "k8s"},
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"},
+					"ipam": {"type": "calico-ipam"}
+				},
+				{
+					"type": "portmap",
+					"capabilities": {"portMappings": true}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(delegate.CNINetworkConfigList.Name).To(Equal("k8s-pod-network"))
+		Expect(delegate.CNINetworkConfigList.CNIVersion).To(Equal("0.3.1"))
+		Expect(delegate.CNINetworkConfigList.Plugins).To(HaveLen(2))
+
+		var calico map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[0].Bytes, &calico)).To(Succeed())
+		Expect(calico["type"]).To(Equal("calico"))
+		Expect(calico["datastore_type"]).To(Equal("kubernetes"))
+		Expect(calico["nodename"]).To(Equal("node-1"))
+		Expect(calico["mtu"]).To(BeEquivalentTo(1500))
+		Expect(calico["policy"]).NotTo(BeNil())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+		ipam, ok := calico["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("calico-ipam"))
+
+		var portmap map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[1].Bytes, &portmap)).To(Succeed())
+		Expect(portmap["type"]).To(Equal("portmap"))
+		capabilities, ok := portmap["capabilities"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(capabilities["portMappings"]).To(BeTrue())
+	})
+
+	It("LoadDelegateNetConfFromConfList keeps appended plugins in CNINetworkConfigList", func() {
+		// libcni appends subdirectory-chain plugins into confList.Plugins but
+		// does NOT update confList.Bytes. CNINetworkConfigList carries the full
+		// plugin list for the conflist fast path.
+		base := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{"type": "calico", "kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(base))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(confList.Plugins).To(HaveLen(1))
+
+		appended, err := libcni.NetworkPluginConfFromBytes([]byte(`{"type": "bandwidth", "capabilities": {"bandwidth": true}}`))
+		Expect(err).NotTo(HaveOccurred())
+		confList.Plugins = append(confList.Plugins, appended)
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(delegate.CNINetworkConfigList.Plugins).To(HaveLen(2))
+		Expect(string(delegate.CNINetworkConfigList.Plugins[1].Bytes)).To(ContainSubstring("bandwidth"))
+	})
+
+	It("LoadDelegateNetConfFromConfList populates CNINetworkConfigList for fast path", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delegate.CNINetworkConfigList.Plugins).NotTo(BeEmpty())
+		Expect(string(delegate.CNINetworkConfigList.Plugins[0].Bytes)).To(ContainSubstring("/etc/cni/net.d/calico-kubeconfig"))
+	})
+
+	It("LoadDelegateNetConfFromConfList re-syncs CNINetworkConfigList when deviceID is set", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [{"type": "sriov", "ipam": {"type": "host-local"}}]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "0000:00:00.0", "resource1")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(delegate.DeviceID).To(Equal("0000:00:00.0"))
+		Expect(delegate.CNINetworkConfigList.Plugins).NotTo(BeEmpty())
+
+		var plugin map[string]interface{}
+		Expect(json.Unmarshal(delegate.CNINetworkConfigList.Plugins[0].Bytes, &plugin)).To(Succeed())
+		Expect(plugin["deviceID"]).To(Equal("0000:00:00.0"))
+		ipam, ok := plugin["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("host-local"))
+	})
+
+	It("PrepareDelegateForCache preserves CNI-specific fields in Bytes for cached DEL", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"cniVersion": "0.3.1",
+			"plugins": [
+				{
+					"type": "calico",
+					"datastore_type": "kubernetes",
+					"nodename": "node-1",
+					"mtu": 1500,
+					"policy": {"type": "k8s"},
+					"kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"},
+					"ipam": {"type": "calico-ipam"}
+				}
+			]
+		}`
+
+		confList, err := libcni.NetworkConfFromBytes([]byte(conflist))
+		Expect(err).NotTo(HaveOccurred())
+
+		delegate, err := LoadDelegateNetConfFromConfList(confList, nil, "", "")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Bytes are lossless from load; PrepareDelegateForCache aligns Bytes with
+		// CNINetworkConfigList before scratch-cache serialization.
+		var beforeCache map[string]interface{}
+		Expect(json.Unmarshal(delegate.Bytes, &beforeCache)).To(Succeed())
+		beforePlugins, ok := beforeCache["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		beforeCalico, ok := beforePlugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(beforeCalico["datastore_type"]).To(Equal("kubernetes"))
+		beforeK8s, ok := beforeCalico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(beforeK8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+
+		Expect(PrepareDelegateForCache(delegate)).To(Succeed())
+
+		var parsed map[string]interface{}
+		Expect(json.Unmarshal(delegate.Bytes, &parsed)).To(Succeed())
+		Expect(parsed["name"]).To(Equal("k8s-pod-network"))
+		Expect(parsed["cniVersion"]).To(Equal("0.3.1"))
+		plugins, ok := parsed["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(plugins).To(HaveLen(1))
+
+		calico, ok := plugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(calico["type"]).To(Equal("calico"))
+		Expect(calico["datastore_type"]).To(Equal("kubernetes"))
+		Expect(calico["nodename"]).To(Equal("node-1"))
+		Expect(calico["mtu"]).To(BeEquivalentTo(1500))
+		Expect(calico["policy"]).NotTo(BeNil())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+		ipam, ok := calico["ipam"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(ipam["type"]).To(Equal("calico-ipam"))
+	})
+
+	It("InjectCNIVersionInConfList sets cniVersion without dropping fields", func() {
+		conflist := `{
+			"name": "k8s-pod-network",
+			"plugins": [
+				{"type": "calico", "kubernetes": {"kubeconfig": "/etc/cni/net.d/calico-kubeconfig"}}
+			]
+		}`
+
+		out, err := InjectCNIVersionInConfList([]byte(conflist), "0.3.1")
+		Expect(err).NotTo(HaveOccurred())
+
+		var parsed map[string]interface{}
+		Expect(json.Unmarshal(out, &parsed)).To(Succeed())
+		Expect(parsed["cniVersion"]).To(Equal("0.3.1"))
+
+		plugins, ok := parsed["plugins"].([]interface{})
+		Expect(ok).To(BeTrue())
+		calico, ok := plugins[0].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		k8s, ok := calico["kubernetes"].(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(k8s["kubeconfig"]).To(Equal("/etc/cni/net.d/calico-kubeconfig"))
+	})
+
+})
