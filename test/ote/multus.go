@@ -52,7 +52,6 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		clientset = oc.AdminKubeClient()
 	})
 
-	// High-57589: Whereabouts CNI Timeout with Large Exclude Range
 	g.It("[JIRA:Networking][OTP] 57589-should handle large IPv6 exclude ranges without timeout", func() {
 		testNS := fmt.Sprintf("test-whereabouts-57589-%s", randomSuffix())
 
@@ -145,7 +144,6 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 			"Expected at least 2 networks, got %d", networkCount)
 	})
 
-	// Medium-76652: Dummy CNI Support
 	g.It("[JIRA:Networking][OTP] 76652-should support Dummy CNI plugin with Multus", func() {
 		testNS := fmt.Sprintf("test-dummy-cni-76652-%s", randomSuffix())
 
@@ -241,7 +239,6 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 			"Expected at least 2 networks (primary + dummy), got %d", networkCount)
 	})
 
-	// Medium-66876: Support Dual Stack IP assignment for whereabouts CNI/IPAM
 	g.It("[JIRA:Networking][OTP] 66876-should assign dual-stack IPs with Whereabouts IPAM", func() {
 		testNS := fmt.Sprintf("test-whereabouts-dualstack-66876-%s", randomSuffix())
 
@@ -471,8 +468,6 @@ python3 /tmp/server.py`,
 			"IPv6 connectivity: Expected response from hello-sdn server")
 	})
 
-	// OCP-69947: Macvlan pods send Unsolicited Neighbor Advertisements
-	// Note: Marked as informing due to timing sensitivity with tcpdump in automated environment
 	g.It("[JIRA:Networking][OTP] 69947-should send Unsolicited Neighbor Advertisements when macvlan pod is created", func() {
 		// AWS Limitation: AWS VPC doesn't support L2 IPv6 multicast/NDP required for macvlan NAs.
 		// This test validates ICMPv6 Neighbor Advertisement packets sent when macvlan pods are created,
@@ -703,7 +698,6 @@ python3 /tmp/server.py`,
 			"Should have captured Unsolicited Neighbor Advertisements (destination ff02::1)")
 	})
 
-	// OCP-80524: Verify pods with isolated port using bridge-cni
 	g.It("[JIRA:Networking][OTP] 80524-should isolate pods with portIsolation enabled on bridge CNI", func() {
 		testNS := fmt.Sprintf("test-bridge-port-isolation-80524-%s", randomSuffix())
 
