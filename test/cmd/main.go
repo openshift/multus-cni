@@ -21,14 +21,14 @@ func main() {
 	registry := e.NewRegistry()
 
 	ext := e.NewExtension("openshift", "payload", "multus-cni")
+
+	// Disruptive tests (e.g. node reboot) run one at a time under the disruptive
+	// cluster-stability classification — same pattern as cluster-network-operator.
 	ext.AddSuite(e.Suite{
-		Name: "openshift/multus-cni/serial",
-		Parents: []string{
-			"openshift/conformance/serial",
-		},
-		Qualifiers: []string{
-			`labels.exists(l, l == "Serial")`,
-		},
+		Name:             "openshift/multus-cni/disruptive",
+		Qualifiers:       []string{`labels.exists(l, l == "Disruptive")`},
+		Parallelism:      1,
+		ClusterStability: e.ClusterStabilityDisruptive,
 	})
 	ext.AddSuite(e.Suite{
 		Name: "openshift/multus-cni",
@@ -36,7 +36,7 @@ func main() {
 			"openshift/conformance/parallel",
 		},
 		Qualifiers: []string{
-			`!labels.exists(l, l == "Serial")`,
+			`!labels.exists(l, l == "Disruptive")`,
 		},
 	})
 

@@ -1230,9 +1230,8 @@ python3 /tmp/server.py`,
 		}
 	})
 
-	g.It("[JIRA:Networking][OTP][Disruptive] 74933-should reconcile whereabouts IPs after forced node reboot", g.Serial, func() {
-		// NOTE: This is a disruptive test that force reboots a node
-		// It runs in serial CI jobs (e.g., e2e-aws-ovn-serial) designed for such tests
+	g.It("[JIRA:Networking][OTP] 74933-should reconcile whereabouts IPs after forced node reboot", g.Label("Disruptive"), func() {
+		// Force-reboots a node; runs under openshift/multus-cni/disruptive.
 		// Related: OCPBUGS-35923, OCPBUGS-16008
 		testNS := fmt.Sprintf("test-whereabouts-reconcile-74933-%s", randomSuffix())
 		nadName := "whereabouts-reconcile"
