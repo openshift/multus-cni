@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	g "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/ginkgo/v2"
 	o "github.com/onsi/gomega"
 
 	exutil "github.com/openshift/origin/test/extended/util"
@@ -35,7 +35,7 @@ const (
 	imagePython39 = "registry.access.redhat.com/ubi9/python-39:latest"
 )
 
-var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
+var _ = Describe("[sig-network][OTP] Multus CNI", func() {
 	var (
 		oc        = exutil.NewCLI("multus-cni")
 		clientset kubernetes.Interface
@@ -43,19 +43,19 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		ctx       context.Context
 	)
 
-	g.BeforeEach(func() {
+	BeforeEach(func() {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Minute)
-		g.DeferCleanup(cancel)
+		DeferCleanup(cancel)
 
 		config = oc.AdminConfig()
 		clientset = oc.AdminKubeClient()
 	})
 
-	g.It("[JIRA:Networking][OTP] 57589-should handle large IPv6 exclude ranges without timeout", func() {
+	It("[JIRA:Networking][OTP] 57589-should handle large IPv6 exclude ranges without timeout", func() {
 		testNS := fmt.Sprintf("test-whereabouts-57589-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -70,13 +70,13 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		defer func() {
-			g.By("Cleaning up test namespace")
+			By("Cleaning up test namespace")
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NetworkAttachmentDefinition with large exclude range")
+		By("Creating NetworkAttachmentDefinition with large exclude range")
 		nadConfig := `{
       "cniVersion": "0.3.1",
       "name": "bridge-net",
@@ -96,7 +96,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		err = createNAD(ctx, config, testNS, "nad-w-excludes", nadConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating pod with secondary network")
+		By("Creating pod with secondary network")
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod",
@@ -119,7 +119,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		_, err = clientset.CoreV1().Pods(testNS).Create(ctx, pod, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for pod to reach Running state (max 60s)")
+		By("Waiting for pod to reach Running state (max 60s)")
 		// Pod should be Running within 60 seconds (test validates no timeout)
 		o.Eventually(func() corev1.PodPhase {
 			p, err := clientset.CoreV1().Pods(testNS).Get(ctx, "test-pod", metav1.GetOptions{})
@@ -130,7 +130,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		}, 60, 5).Should(o.Equal(corev1.PodRunning),
 			"Pod did not reach Running state within 60s - Whereabouts may have timed out")
 
-		g.By("Verifying secondary network attachment")
+		By("Verifying secondary network attachment")
 		p, err := clientset.CoreV1().Pods(testNS).Get(ctx, "test-pod", metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
@@ -144,10 +144,10 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 			"Expected at least 2 networks, got %d", networkCount)
 	})
 
-	g.It("[JIRA:Networking][OTP] 76652-should support Dummy CNI plugin with Multus", func() {
+	It("[JIRA:Networking][OTP] 76652-should support Dummy CNI plugin with Multus", func() {
 		testNS := fmt.Sprintf("test-dummy-cni-76652-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -162,13 +162,13 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		defer func() {
-			g.By("Cleaning up test namespace")
+			By("Cleaning up test namespace")
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NetworkAttachmentDefinition with dummy CNI and static IPAM")
+		By("Creating NetworkAttachmentDefinition with dummy CNI and static IPAM")
 		dummyConfig := `{
       "cniVersion": "0.3.1",
       "name": "dummy-net",
@@ -186,7 +186,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		err = createNAD(ctx, config, testNS, "dummy-net", dummyConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating pod with dummy network attached")
+		By("Creating pod with dummy network attached")
 		pod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-dummy-pod",
@@ -209,7 +209,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		_, err = clientset.CoreV1().Pods(testNS).Create(ctx, pod, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for pod to reach Running state")
+		By("Waiting for pod to reach Running state")
 		o.Eventually(func() corev1.PodPhase {
 			p, err := clientset.CoreV1().Pods(testNS).Get(ctx, "test-dummy-pod", metav1.GetOptions{})
 			if err != nil {
@@ -219,7 +219,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		}, 60, 5).Should(o.Equal(corev1.PodRunning),
 			"Pod did not reach Running state within 60s")
 
-		g.By("Verifying dummy network interface is created")
+		By("Verifying dummy network interface is created")
 		p, err := clientset.CoreV1().Pods(testNS).Get(ctx, "test-dummy-pod", metav1.GetOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
@@ -227,7 +227,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		o.Expect(ok).To(o.BeTrue(), "Pod missing network-status annotation")
 		o.Expect(networkStatus).NotTo(o.BeEmpty())
 
-		g.By("Validating dummy interface has correct IP and configuration")
+		By("Validating dummy interface has correct IP and configuration")
 		// Network status should contain 2 interfaces: ovn-kubernetes (primary) + dummy-net (secondary)
 		o.Expect(networkStatus).To(o.ContainSubstring("ovn-kubernetes"), "Should have primary OVN network")
 		o.Expect(networkStatus).To(o.ContainSubstring("dummy-net"), "Should have dummy network")
@@ -239,10 +239,10 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 			"Expected at least 2 networks (primary + dummy), got %d", networkCount)
 	})
 
-	g.It("[JIRA:Networking][OTP] 66876-should assign dual-stack IPs with Whereabouts IPAM", func() {
+	It("[JIRA:Networking][OTP] 66876-should assign dual-stack IPs with Whereabouts IPAM", func() {
 		testNS := fmt.Sprintf("test-whereabouts-dualstack-66876-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -257,13 +257,13 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		defer func() {
-			g.By("Cleaning up test namespace")
+			By("Cleaning up test namespace")
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NetworkAttachmentDefinition with dual-stack Whereabouts IPAM")
+		By("Creating NetworkAttachmentDefinition with dual-stack Whereabouts IPAM")
 		dualStackConfig := `{
 			"cniVersion": "0.3.1",
 			"name": "whereabouts-dualstack",
@@ -285,7 +285,7 @@ var _ = g.Describe("[sig-network][OTP] Multus CNI", func() {
 		err = createNAD(ctx, config, testNS, "whereabouts-dualstack", dualStackConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating deployment with 2 pods using pod affinity for same-node placement")
+		By("Creating deployment with 2 pods using pod affinity for same-node placement")
 		deployment := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod",
@@ -365,7 +365,7 @@ python3 /tmp/server.py`,
 		_, err = clientset.AppsV1().Deployments(testNS).Create(ctx, deployment, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for both pods to reach Running state")
+		By("Waiting for both pods to reach Running state")
 		o.Eventually(func() int {
 			pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 				LabelSelector: "app=test-pod",
@@ -382,7 +382,7 @@ python3 /tmp/server.py`,
 			return runningCount
 		}, 120, 10).Should(o.Equal(2), "Both pods should reach Running state")
 
-		g.By("Verifying pods have dual-stack IPs on secondary interface")
+		By("Verifying pods have dual-stack IPs on secondary interface")
 		pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 			LabelSelector: "app=test-pod",
 		})
@@ -424,14 +424,14 @@ python3 /tmp/server.py`,
 		o.Expect(ipv4Assigned).To(o.Equal(2), "Both pods should have IPv4 addresses")
 		o.Expect(ipv6Assigned).To(o.Equal(2), "Both pods should have IPv6 addresses")
 
-		g.By("Verifying dual-stack IP uniqueness")
+		By("Verifying dual-stack IP uniqueness")
 		o.Expect(len(podIPs)).To(o.BeNumerically(">=", 2), "Should have extracted at least 2 IPv4 addresses")
 
 		if len(podIPs) >= 2 {
 			o.Expect(podIPs[0]).NotTo(o.Equal(podIPs[1]), "Pods should have different IPv4 addresses")
 		}
 
-		g.By("Testing IPv4 connectivity between pods on the same node")
+		By("Testing IPv4 connectivity between pods on the same node")
 		// Both pods are guaranteed to be on the same node via pod affinity
 		// Macvlan in bridge mode requires same-node for L2 connectivity
 		o.Expect(len(pods.Items)).To(o.Equal(2), "Should have exactly 2 pods")
@@ -460,7 +460,7 @@ python3 /tmp/server.py`,
 		o.Expect(out).To(o.ContainSubstring("whereabouts-dualstack-test-pod"),
 			"IPv4 connectivity: Expected response from hello-sdn server")
 
-		g.By("Testing IPv6 connectivity between pods on secondary network")
+		By("Testing IPv6 connectivity between pods on secondary network")
 		out, err = execInPod(ctx, clientset, config, testNS, srcPod, "test-pod",
 			[]string{"curl", "-s", "-6", "-g", "--connect-timeout", "5", fmt.Sprintf("http://[%s]:8080", dstIPv6)})
 		o.Expect(err).NotTo(o.HaveOccurred(), "IPv6 connectivity test failed: %s", out)
@@ -468,7 +468,7 @@ python3 /tmp/server.py`,
 			"IPv6 connectivity: Expected response from hello-sdn server")
 	})
 
-	g.It("[JIRA:Networking][OTP] 69947-should send Unsolicited Neighbor Advertisements when macvlan pod is created", func() {
+	It("[JIRA:Networking][OTP] 69947-should send Unsolicited Neighbor Advertisements when macvlan pod is created", func() {
 		// AWS Limitation: AWS VPC doesn't support L2 IPv6 multicast/NDP required for macvlan NAs.
 		// This test validates ICMPv6 Neighbor Advertisement packets sent when macvlan pods are created,
 		// which requires L2 network capabilities that AWS VPC blocks at the hypervisor level.
@@ -480,13 +480,13 @@ python3 /tmp/server.py`,
 		if len(nodes.Items) > 0 {
 			providerID := nodes.Items[0].Spec.ProviderID
 			if providerID != "" && (strings.Contains(providerID, "aws") || strings.Contains(providerID, "ec2")) {
-				g.Skip("Skipping on AWS: AWS VPC doesn't support L2 IPv6 multicast/NDP required for macvlan Unsolicited Neighbor Advertisements")
+				Skip("Skipping on AWS: AWS VPC doesn't support L2 IPv6 multicast/NDP required for macvlan Unsolicited Neighbor Advertisements")
 			}
 		}
 
 		testNS := fmt.Sprintf("test-macvlan-na-69947-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -502,11 +502,11 @@ python3 /tmp/server.py`,
 
 		defer func() {
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NetworkAttachmentDefinition with dual-stack whereabouts IPAM")
+		By("Creating NetworkAttachmentDefinition with dual-stack whereabouts IPAM")
 		nadConfig := `{
 			"cniVersion": "0.3.1",
 			"name": "whereabouts-dualstack",
@@ -528,7 +528,7 @@ python3 /tmp/server.py`,
 		err = createNAD(ctx, config, testNS, "whereabouts-dualstack", nadConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating sniffer pod to capture ICMPv6 Neighbor Advertisements")
+		By("Creating sniffer pod to capture ICMPv6 Neighbor Advertisements")
 		snifferPod := &corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "sniff-pod",
@@ -581,7 +581,7 @@ python3 /tmp/server.py`,
 			return err == nil && strings.Contains(out, "ready")
 		}, 30, 2).Should(o.BeTrue(), "tcpdump should be running in sniffer pod")
 
-		g.By("Creating 6 test pods with macvlan secondary network")
+		By("Creating 6 test pods with macvlan secondary network")
 		deployment := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-pod",
@@ -638,7 +638,7 @@ python3 /tmp/server.py`,
 		_, err = clientset.AppsV1().Deployments(testNS).Create(ctx, deployment, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for all 6 test pods to reach Running state")
+		By("Waiting for all 6 test pods to reach Running state")
 		o.Eventually(func() int {
 			pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 				LabelSelector: "name=test-pod",
@@ -662,11 +662,11 @@ python3 /tmp/server.py`,
 			return err == nil && strings.TrimSpace(out) != "0" && strings.TrimSpace(out) != ""
 		}, 30, 5).Should(o.BeTrue(), "Should have captured at least one ICMPv6 Neighbor Advertisement")
 
-		g.By("Analyzing captured ICMPv6 Neighbor Advertisements")
+		By("Analyzing captured ICMPv6 Neighbor Advertisements")
 		// Kill tcpdump process (error ignored — pkill exits non-zero if already stopped)
 		if _, err := execInPod(ctx, clientset, config, testNS, "sniff-pod", "sniffer",
 			[]string{"/bin/sh", "-c", "pkill tcpdump"}); err != nil {
-			g.GinkgoLogr.Error(err, "Failed to kill tcpdump process")
+			GinkgoLogr.Error(err, "Failed to kill tcpdump process")
 		}
 
 		// Wait for tcpdump to stop and flush pcap file
@@ -686,7 +686,7 @@ python3 /tmp/server.py`,
 		o.Expect(err).NotTo(o.HaveOccurred(), "Failed to parse NA count: %s", naOut)
 		o.Expect(naCount).To(o.BeNumerically(">", 0), "Should have captured at least one ICMPv6 Neighbor Advertisement")
 
-		g.By("Verifying Neighbor Advertisements are Unsolicited (solicited flag = 0)")
+		By("Verifying Neighbor Advertisements are Unsolicited (solicited flag = 0)")
 		// In unsolicited NA, the destination is ff02::1 (all nodes multicast)
 		verifyOut, err := execInPod(ctx, clientset, config, testNS, "sniff-pod", "sniffer",
 			[]string{"/bin/sh", "-c", `tcpdump -r /tmp/capture.pcap -n 'icmp6 and icmp6[0] = 136' 2>/dev/null | grep "ff02::1" | wc -l`})
@@ -698,10 +698,10 @@ python3 /tmp/server.py`,
 			"Should have captured Unsolicited Neighbor Advertisements (destination ff02::1)")
 	})
 
-	g.It("[JIRA:Networking][OTP] 80524-should isolate pods with portIsolation enabled on bridge CNI", func() {
+	It("[JIRA:Networking][OTP] 80524-should isolate pods with portIsolation enabled on bridge CNI", func() {
 		testNS := fmt.Sprintf("test-bridge-port-isolation-80524-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -717,11 +717,11 @@ python3 /tmp/server.py`,
 
 		defer func() {
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NetworkAttachmentDefinition with portIsolation enabled")
+		By("Creating NetworkAttachmentDefinition with portIsolation enabled")
 		nadConfig := `{
 			"cniVersion": "0.4.0",
 			"name": "bridge-isolated-ports",
@@ -751,7 +751,7 @@ python3 /tmp/server.py`,
 		err = createNAD(ctx, config, testNS, "bridge-isolated-ports", nadConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating Deployment with 2 pods on the same node")
+		By("Creating Deployment with 2 pods on the same node")
 		targetNode := getSchedulableNode(ctx, clientset)
 
 		deployment := &appsv1.Deployment{
@@ -801,7 +801,7 @@ python3 /tmp/server.py`,
 		_, err = clientset.AppsV1().Deployments(testNS).Create(ctx, deployment, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for both pods to be Running")
+		By("Waiting for both pods to be Running")
 		o.Eventually(func() int {
 			pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 				LabelSelector: "name=red",
@@ -818,7 +818,7 @@ python3 /tmp/server.py`,
 			return runningCount
 		}, 120, 5).Should(o.Equal(2), "Both pods should be running on the same node")
 
-		g.By("Getting pod IPs from secondary network")
+		By("Getting pod IPs from secondary network")
 		pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 			LabelSelector: "name=red",
 		})
@@ -862,7 +862,7 @@ python3 /tmp/server.py`,
 		}
 		o.Expect(pod2SecondaryIP).NotTo(o.BeEmpty(), "Pod2 should have secondary IP")
 
-		g.By("Verifying pods cannot communicate via isolated bridge ports")
+		By("Verifying pods cannot communicate via isolated bridge ports")
 		// Ping should FAIL because ports are isolated
 		pingOut, err := execInPod(ctx, clientset, config, testNS, pod1.Name, "red-test-pod",
 			[]string{"ping", "-c", "3", "-W", "2", pod2SecondaryIP})
@@ -873,10 +873,10 @@ python3 /tmp/server.py`,
 		), "Should show network isolation")
 	})
 
-	g.It("[JIRA:Networking][OTP] 80525-should allow communication on non-isolated network but not on isolated network", func() {
+	It("[JIRA:Networking][OTP] 80525-should allow communication on non-isolated network but not on isolated network", func() {
 		testNS := fmt.Sprintf("test-bridge-mixed-isolation-80525-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -892,11 +892,11 @@ python3 /tmp/server.py`,
 
 		defer func() {
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Creating NAD with portIsolation enabled")
+		By("Creating NAD with portIsolation enabled")
 		nadIsolated := `{
 			"cniVersion": "0.4.0",
 			"name": "bridge-isolated-ports",
@@ -926,7 +926,7 @@ python3 /tmp/server.py`,
 		err = createNAD(ctx, config, testNS, "bridge-isolated-ports", nadIsolated)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating NAD with portIsolation disabled")
+		By("Creating NAD with portIsolation disabled")
 		nadNonIsolated := `{
 			"cniVersion": "0.4.0",
 			"name": "bridge-whereabouts",
@@ -952,7 +952,7 @@ python3 /tmp/server.py`,
 		err = createNAD(ctx, config, testNS, "bridge-whereabouts", nadNonIsolated)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating Deployment with 2 pods using both NADs on the same node")
+		By("Creating Deployment with 2 pods using both NADs on the same node")
 		targetNode := getSchedulableNode(ctx, clientset)
 
 		deployment := &appsv1.Deployment{
@@ -1002,7 +1002,7 @@ python3 /tmp/server.py`,
 		_, err = clientset.AppsV1().Deployments(testNS).Create(ctx, deployment, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for both pods to be Running")
+		By("Waiting for both pods to be Running")
 		o.Eventually(func() int {
 			pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 				LabelSelector: "name=green",
@@ -1019,7 +1019,7 @@ python3 /tmp/server.py`,
 			return runningCount
 		}, 120, 5).Should(o.Equal(2), "Both pods should be running on the same node")
 
-		g.By("Getting pod IPs from both networks")
+		By("Getting pod IPs from both networks")
 		pods, err := clientset.CoreV1().Pods(testNS).List(ctx, metav1.ListOptions{
 			LabelSelector: "name=green",
 		})
@@ -1082,7 +1082,7 @@ python3 /tmp/server.py`,
 		o.Expect(pod2IsolatedIP).NotTo(o.BeEmpty(), "Pod2 should have isolated network IP")
 		o.Expect(pod2NonIsolatedIP).NotTo(o.BeEmpty(), "Pod2 should have non-isolated network IP")
 
-		g.By("Verifying pods CANNOT communicate via isolated network")
+		By("Verifying pods CANNOT communicate via isolated network")
 		// Ping should FAIL on isolated network
 		isolatedOut, err := execInPod(ctx, clientset, config, testNS, pod1.Name, "green-test-pod",
 			[]string{"ping", "-c", "3", "-W", "2", pod2IsolatedIP})
@@ -1092,7 +1092,7 @@ python3 /tmp/server.py`,
 			o.ContainSubstring("Network is unreachable"),
 		), "Should show network isolation on isolated network")
 
-		g.By("Verifying pods CAN communicate via non-isolated network")
+		By("Verifying pods CAN communicate via non-isolated network")
 		// Ping should SUCCEED on non-isolated network
 		nonIsolatedOut, err := execInPod(ctx, clientset, config, testNS, pod1.Name, "green-test-pod",
 			[]string{"ping", "-c", "3", "-W", "2", pod2NonIsolatedIP})
@@ -1100,17 +1100,17 @@ python3 /tmp/server.py`,
 		o.Expect(nonIsolatedOut).To(o.ContainSubstring("0% packet loss"), "Should show successful ping on non-isolated network")
 	})
 
-	g.It("[JIRA:Networking][OTP] 77102-should have secure permissions on CNI configuration files", func() {
+	It("[JIRA:Networking][OTP] 77102-should have secure permissions on CNI configuration files", func() {
 		testNS := fmt.Sprintf("test-cni-permissions-77102-%s", randomSuffix())
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
 				Labels: map[string]string{
-					"pod-security.kubernetes.io/enforce":         "privileged",
-					"pod-security.kubernetes.io/audit":           "privileged",
-					"pod-security.kubernetes.io/warn":            "privileged",
+					"pod-security.kubernetes.io/enforce":             "privileged",
+					"pod-security.kubernetes.io/audit":               "privileged",
+					"pod-security.kubernetes.io/warn":                "privileged",
 					"security.openshift.io/scc.podSecurityLabelSync": "false",
 				},
 			},
@@ -1119,13 +1119,13 @@ python3 /tmp/server.py`,
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		defer func() {
-			g.By("Cleaning up test namespace")
+			By("Cleaning up test namespace")
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
-		g.By("Checking multus config permissions via multus pods")
+		By("Checking multus config permissions via multus pods")
 		multusPods, err := clientset.CoreV1().Pods("openshift-multus").List(ctx, metav1.ListOptions{
 			LabelSelector: "app=multus",
 		})
@@ -1138,7 +1138,7 @@ python3 /tmp/server.py`,
 			[]string{"/bin/bash", "-c", "stat -c '%a %n' /host/etc/cni/net.d/*.conf"})
 		o.Expect(err).NotTo(o.HaveOccurred(), "Failed to check multus config permissions")
 
-		g.By("Verifying multus config has 600 permissions")
+		By("Verifying multus config has 600 permissions")
 		lines := strings.Split(strings.TrimSpace(output), "\n")
 		for _, line := range lines {
 			if line == "" {
@@ -1152,7 +1152,7 @@ python3 /tmp/server.py`,
 				"CIS violation: %s has insecure permissions %s (expected 600)", filename, perms)
 		}
 
-		g.By("Checking whereabouts config permissions")
+		By("Checking whereabouts config permissions")
 		nodeName := getSchedulableNode(ctx, clientset)
 
 		// Create debug pod on node
@@ -1213,7 +1213,7 @@ python3 /tmp/server.py`,
 			[]string{"/bin/bash", "-c", "stat -c '%a %n' /host/etc/kubernetes/cni/net.d/whereabouts.d/*.conf /host/etc/kubernetes/cni/net.d/whereabouts.d/*.kubeconfig 2>/dev/null || true"})
 		o.Expect(err).NotTo(o.HaveOccurred(), "Failed to check whereabouts config permissions")
 
-		g.By("Verifying whereabouts configs have 600 permissions")
+		By("Verifying whereabouts configs have 600 permissions")
 		if strings.TrimSpace(output) != "" {
 			lines = strings.Split(strings.TrimSpace(output), "\n")
 			for _, line := range lines {
@@ -1230,15 +1230,13 @@ python3 /tmp/server.py`,
 		}
 	})
 
-	g.It("[JIRA:Networking][OTP] 74933-should reconcile whereabouts IPs after forced node reboot", g.Label("Disruptive"), func() {
-		// Force-reboots a node; runs under openshift/multus-cni/disruptive.
-		// Related: OCPBUGS-35923, OCPBUGS-16008
+	It("[JIRA:Networking][OTP] 74933-should reconcile whereabouts IPs after forced node reboot", Label("Disruptive"), func() {
 		testNS := fmt.Sprintf("test-whereabouts-reconcile-74933-%s", randomSuffix())
 		nadName := "whereabouts-reconcile"
 		statefulSetName := "test-sts"
 		replicas := int32(2)
 
-		g.By("Creating test namespace")
+		By("Creating test namespace")
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNS,
@@ -1253,14 +1251,14 @@ python3 /tmp/server.py`,
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		defer func() {
-			g.By("Cleaning up test namespace")
+			By("Cleaning up test namespace")
 			if err := clientset.CoreV1().Namespaces().Delete(ctx, testNS, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
+				GinkgoLogr.Error(err, "Failed to delete test namespace", "namespace", testNS)
 			}
 		}()
 
 		// Get schedulable nodes
-		g.By("Finding schedulable nodes")
+		By("Finding schedulable nodes")
 		nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 		o.Expect(len(nodes.Items)).To(o.BeNumerically(">", 0), "Should have at least one node")
@@ -1294,7 +1292,7 @@ python3 /tmp/server.py`,
 		}
 		o.Expect(targetNode).NotTo(o.BeEmpty(), "Should have at least one Ready, schedulable node")
 
-		g.By(fmt.Sprintf("Updating whereabouts reconciler configuration on node %s", targetNode))
+		By(fmt.Sprintf("Updating whereabouts reconciler configuration on node %s", targetNode))
 		// Create debug pod on target node to modify whereabouts config
 		debugPodName := "whereabouts-config-update"
 		debugPod := &corev1.Pod{
@@ -1370,7 +1368,7 @@ python3 /tmp/server.py`,
 		o.Expect(err).NotTo(o.HaveOccurred(), "Failed to update whereabouts config: %s", output)
 		o.Expect(output).To(o.ContainSubstring("Updated whereabouts reconciler config"))
 
-		g.By("Creating NetworkAttachmentDefinition with whereabouts IPAM")
+		By("Creating NetworkAttachmentDefinition with whereabouts IPAM")
 		// IP range sized for exactly the number of replicas (tight range for reconciliation test)
 		nadConfig := fmt.Sprintf(`{
 			"cniVersion": "0.3.1",
@@ -1387,7 +1385,7 @@ python3 /tmp/server.py`,
 		err = createNAD(ctx, config, testNS, nadName, nadConfig)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Creating StatefulSet with pods using whereabouts")
+		By("Creating StatefulSet with pods using whereabouts")
 		statefulSet := &appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      statefulSetName,
@@ -1426,7 +1424,7 @@ python3 /tmp/server.py`,
 		_, err = clientset.AppsV1().StatefulSets(testNS).Create(ctx, statefulSet, metav1.CreateOptions{})
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		g.By("Waiting for StatefulSet pods to be Running")
+		By("Waiting for StatefulSet pods to be Running")
 		o.Eventually(func() bool {
 			sts, err := clientset.AppsV1().StatefulSets(testNS).Get(ctx, statefulSetName, metav1.GetOptions{})
 			if err != nil {
@@ -1435,7 +1433,7 @@ python3 /tmp/server.py`,
 			return sts.Status.ReadyReplicas == replicas
 		}, 120, 5).Should(o.BeTrue(), "StatefulSet pods did not reach Running state")
 
-		g.By("Recording IP addresses from whereabouts before node reboot")
+		By("Recording IP addresses from whereabouts before node reboot")
 		podIPs := make(map[string]string)
 		for i := int32(0); i < replicas; i++ {
 			podName := fmt.Sprintf("%s-%d", statefulSetName, i)
@@ -1467,10 +1465,10 @@ python3 /tmp/server.py`,
 			}
 			o.Expect(secondaryIP).NotTo(o.BeEmpty(), "Pod %s has no secondary IP from whereabouts", podName)
 			podIPs[podName] = secondaryIP
-			g.By(fmt.Sprintf("Pod %s has secondary IP: %s", podName, secondaryIP))
+			By(fmt.Sprintf("Pod %s has secondary IP: %s", podName, secondaryIP))
 		}
 
-		g.By(fmt.Sprintf("Force rebooting node %s", targetNode))
+		By(fmt.Sprintf("Force rebooting node %s", targetNode))
 		rebootCmd := []string{
 			"/bin/bash", "-c",
 			"chroot /host systemctl reboot --force",
@@ -1478,7 +1476,7 @@ python3 /tmp/server.py`,
 
 		_, _ = execInPod(ctx, clientset, config, testNS, debugPodName, "debug", rebootCmd)
 
-		g.By("Waiting for node to become NotReady")
+		By("Waiting for node to become NotReady")
 		o.Eventually(func() bool {
 			node, err := clientset.CoreV1().Nodes().Get(ctx, targetNode, metav1.GetOptions{})
 			if err != nil {
@@ -1492,7 +1490,7 @@ python3 /tmp/server.py`,
 			return false
 		}, 120, 5).Should(o.BeTrue(), "Node did not become NotReady after reboot command")
 
-		g.By("Waiting for node to come back and become Ready")
+		By("Waiting for node to come back and become Ready")
 		o.Eventually(func() bool {
 			node, err := clientset.CoreV1().Nodes().Get(ctx, targetNode, metav1.GetOptions{})
 			if err != nil {
@@ -1506,7 +1504,7 @@ python3 /tmp/server.py`,
 			return false
 		}, 600, 10).Should(o.BeTrue(), "Node did not come back Ready after reboot")
 
-		g.By("Force deleting StatefulSet pods to trigger recreation")
+		By("Force deleting StatefulSet pods to trigger recreation")
 		gracePeriod := int64(0)
 		for i := int32(0); i < replicas; i++ {
 			podName := fmt.Sprintf("%s-%d", statefulSetName, i)
@@ -1514,11 +1512,11 @@ python3 /tmp/server.py`,
 				GracePeriodSeconds: &gracePeriod,
 			})
 			if err != nil && !apierrors.IsNotFound(err) {
-				g.GinkgoLogr.Error(err, "Failed to delete pod", "pod", podName)
+				GinkgoLogr.Error(err, "Failed to delete pod", "pod", podName)
 			}
 		}
 
-		g.By("Waiting for StatefulSet pods to be recreated and Running")
+		By("Waiting for StatefulSet pods to be recreated and Running")
 		o.Eventually(func() bool {
 			sts, err := clientset.AppsV1().StatefulSets(testNS).Get(ctx, statefulSetName, metav1.GetOptions{})
 			if err != nil {
@@ -1527,7 +1525,7 @@ python3 /tmp/server.py`,
 			return sts.Status.ReadyReplicas == replicas
 		}, 300, 10).Should(o.BeTrue(), "StatefulSet pods did not get recreated")
 
-		g.By("Verifying pods get the same IPs after reboot (whereabouts reconciliation)")
+		By("Verifying pods get the same IPs after reboot (whereabouts reconciliation)")
 		for i := int32(0); i < replicas; i++ {
 			podName := fmt.Sprintf("%s-%d", statefulSetName, i)
 			originalIP := podIPs[podName]
@@ -1562,10 +1560,10 @@ python3 /tmp/server.py`,
 			o.Expect(newIP).To(o.Equal(originalIP),
 				"Pod %s IP changed after reboot: was %s, now %s (whereabouts reconciliation failed)",
 				podName, originalIP, newIP)
-			g.By(fmt.Sprintf("Pod %s kept the same IP: %s", podName, newIP))
+			By(fmt.Sprintf("Pod %s kept the same IP: %s", podName, newIP))
 		}
 
-		g.By("Restoring original whereabouts configuration")
+		By("Restoring original whereabouts configuration")
 		restoreCmd := []string{
 			"/bin/bash", "-c",
 			"mv /host/etc/kubernetes/cni/net.d/whereabouts.d/whereabouts.conf.backup /host/etc/kubernetes/cni/net.d/whereabouts.d/whereabouts.conf 2>/dev/null || true",
