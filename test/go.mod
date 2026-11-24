@@ -6,11 +6,12 @@ require (
 	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/openshift-eng/openshift-tests-extension v0.0.0-20260521151256-b5a8f7ec8a38
-	github.com/openshift/origin v1.5.0-alpha.3.0.20260310231025-5d3fd0545b5d
+	github.com/openshift/origin v1.5.2
 	github.com/spf13/cobra v1.10.2
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
 	k8s.io/client-go v0.35.2
+	k8s.io/kubernetes v1.35.2
 )
 
 require (
@@ -192,7 +193,6 @@ require (
 	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/kubectl v0.34.1 // indirect
 	k8s.io/kubelet v0.31.1 // indirect
-	k8s.io/kubernetes v1.35.2 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	k8s.io/pod-security-admission v0.34.1 // indirect
 	k8s.io/sample-apiserver v0.0.0 // indirect
